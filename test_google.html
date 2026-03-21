@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Google Login Test</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  </head>
+  <body>
+    <div
+      id="g_id_onload"
+      data-client_id="1044436977990-7ag16e8shc10054tma2ve99b78tc95un.apps.googleusercontent.com"
+      data-callback="handleCredentialResponse"
+    ></div>
+
+    <div class="g_id_signin"></div>
+
+    <script>
+      function handleCredentialResponse(response) {
+        console.log("ID Token:", response.credential);
+
+        // Send to backend
+        fetch("http://127.0.0.1:8000/auth/google", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            token: response.credential,
+          }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            console.log("Backend Response:", data);
+
+            // Save JWT
+            const jwt = data.access_token;
+
+            // Test protected route
+            fetch("http://127.0.0.1:8000/protected", {
+              headers: {
+                Authorization: "Bearer " + jwt,
+              },
+            })
+              .then((res) => res.json())
+              .then((data) => console.log("Protected:", data));
+          });
+      }
+    </script>
+  </body>
+</html>
