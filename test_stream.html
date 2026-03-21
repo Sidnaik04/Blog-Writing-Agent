@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+  <body>
+    <button onclick="start()">Generate Blog</button>
+
+    <pre id="output"></pre>
+
+    <script>
+      function start() {
+        const output = document.getElementById("output");
+
+        fetch("http://127.0.0.1:8000/generate/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer YOUR_JWT",
+          },
+          body: JSON.stringify({
+            topic: "Future of AI",
+            api_key: "AIzaSyBQsapBIMZgdzGfzbHsdTqKfFl0YJ3_I9Q",
+          }),
+        }).then((response) => {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+
+          function read() {
+            reader.read().then(({ done, value }) => {
+              if (done) return;
+
+              const chunk = decoder.decode(value);
+              output.textContent += chunk;
+
+              read();
+            });
+          }
+
+          read();
+        });
+      }
+    </script>
+  </body>
+</html>

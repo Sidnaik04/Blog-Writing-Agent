@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.db.deps import get_db
 from app.db.base import Base
 from app.db.session import engine
-from app.api import auth, blog
+from app.api import auth, blog, generation
 from app.api.deps import get_current_user
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -22,6 +22,7 @@ app.add_middleware(
 # routes
 app.include_router(auth.router)
 app.include_router(blog.router)
+app.include_router(generation.router)
 
 
 @app.get("/")
