@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, Request
 from sse_starlette.sse import EventSourceResponse
-from typing import Dict, Any
 import json
 
 from app.api.deps import get_current_user
@@ -16,23 +15,35 @@ async def generate_blog(request: Request, user=Depends(get_current_user)):
     topic = body.get("topic")
     api_key = body.get("api_key")
 
-    if not topic or not api_key:
-        return {"error": "Missing topic or API Key"}
-
     graph = build_graph(api_key)
 
     async def event_generator():
-        inputs: Dict[str, Any] = {"topic": topic, "sections": [], "final": ""}
+        inputs = {
+            "topic": topic,
+            "sections": [],
+            "plan": None,
+            "evidence": [],
+            "final": ""
+        }
 
         try:
             for step in graph.stream(inputs, stream_mode="updates"):
-                yield {"event": "update", "data": json.dumps(step, default=str)}
+                yield {
+                    "event": "update",
+                    "data": json.dumps(step, default=str)
+                }
 
             final = graph.invoke(inputs)
 
-            yield {"event": "final", "data": json.dumps(final, default=str)}
+            yield {
+                "event": "final",
+                "data": json.dumps(final, default=str)
+            }
 
         except Exception as e:
-            yield {"event": "error", "data": str(e)}
+            yield {
+                "event": "error",
+                "data": str(e)
+            }
 
     return EventSourceResponse(event_generator())

@@ -6,6 +6,7 @@ from app.api.deps import get_current_user
 from app.models.blog import Blog
 from app.schemas.blog import BlogCreate, BlogResponse
 from app.models.user import User
+from app.services.rag_service import store_blog
 
 router = APIRouter(prefix="/blogs", tags=["Blogs"])
 
@@ -18,6 +19,8 @@ def create_blog(
     user: User = Depends(get_current_user),
 ):
     new_blog = Blog(title=blog.title, content_md=blog.content_md, user_id=user.id)
+
+    store_blog(new_blog.id, new_blog.content_md)
 
     db.add(new_blog)
     db.commit()

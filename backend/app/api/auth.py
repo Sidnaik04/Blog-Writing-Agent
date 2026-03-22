@@ -4,13 +4,16 @@ from app.db.deps import get_db
 from app.models.user import User
 from app.services.google_auth import verify_google_token
 from app.core.security import create_access_token
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
+class GoogleToken(BaseModel):
+    token: str
 
 @router.post("/google")
-def google_login(token: str, db: Session = Depends(get_db)):
-    user_info = verify_google_token(token)
+def google_login(payload: GoogleToken, db: Session = Depends(get_db)):
+    user_info = verify_google_token(payload.token)
 
     if not user_info:
         raise HTTPException(status_code=400, detail="Invalid Google token")
@@ -19,7 +22,7 @@ def google_login(token: str, db: Session = Depends(get_db)):
     name = user_info.get("name")
     picture = user_info.get("picture")
 
-    user = db.query(User).filter(user.email == email).first()
+    user = db.query(User).filter(User.email == email).first()
 
     if not user:
         user = User(email=email, name=name, picture=picture)
