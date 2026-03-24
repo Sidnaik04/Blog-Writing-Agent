@@ -48,6 +48,9 @@ Thumbs.db
 # Database
 *.db
 *.sqlite
+
+# Frontend
+frontend/
 *.sqlite3
 postgres.db
 
