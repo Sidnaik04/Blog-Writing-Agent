@@ -1,0 +1,475 @@
+import { useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { useAuth } from "../context/AuthContext";
+import { streamGenerate, createBlog } from "../services/api";
+import AgentPipeline, { guessStepFromData } from "../components/AgentPipeline";
+import {
+  Button,
+  Spinner,
+  IconKey,
+  IconCopy,
+  IconCheck,
+  IconDownload,
+  IconPen,
+} from "../components/ui";
+import Layout from "../components/Layout";
+
+const PHASES = {
+  idle: "idle",
+  running: "running",
+  done: "done",
+  error: "error",
+};
+
+function extractFinalContent(finalData) {
+  if (!finalData) return "";
+  // Try common field names from LangGraph state
+  if (typeof finalData === "string") return finalData;
+  return (
+    finalData.final ||
+    finalData.content ||
+    finalData.blog ||
+    finalData.result ||
+    finalData.output ||
+    ""
+  );
+}
+
+function extractTitle(content, topic) {
+  const match = content.match(/^#\s+(.+)$/m);
+  return match ? match[1].trim() : topic;
+}
+
+export default function GeneratePage() {
+  const { token, apiKey, setApiKey } = useAuth();
+  const navigate = useNavigate();
+
+  const [topic, setTopic] = useState("");
+  const [localApiKey, setLocalApiKey] = useState(apiKey);
+  const [showApiKey, setShowApiKey] = useState(!apiKey);
+
+  const [phase, setPhase] = useState(PHASES.idle);
+  const [stepKeys, setStepKeys] = useState([]);
+  const [activeStep, setActiveStep] = useState(null);
+  const [completedSteps, setCompletedSteps] = useState([]);
+  const [errorStep, setErrorStep] = useState(null);
+  const [streamLog, setStreamLog] = useState([]);
+
+  const [finalContent, setFinalContent] = useState("");
+  const [finalTopic, setFinalTopic] = useState("");
+  const [view, setView] = useState("preview"); // preview | raw
+  const [copied, setCopied] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  const abortRef = useRef(false);
+
+  const handleGenerate = async () => {
+    if (!topic.trim()) return;
+    if (!localApiKey.trim()) {
+      setShowApiKey(true);
+      return;
+    }
+
+    setApiKey(localApiKey.trim());
+    abortRef.current = false;
+    setPhase(PHASES.running);
+    setStepKeys([]);
+    setActiveStep(null);
+    setCompletedSteps([]);
+    setErrorStep(null);
+    setStreamLog([]);
+    setFinalContent("");
+    setFinalTopic(topic.trim());
+
+    try {
+      for await (const { event, data } of streamGenerate(
+        token,
+        topic.trim(),
+        localApiKey.trim(),
+      )) {
+        if (abortRef.current) break;
+
+        if (event === "update") {
+          // Detect which node just ran
+          const stepKey = guessStepFromData(data);
+
+          setStreamLog((prev) => [...prev, { event, data, stepKey }]);
+
+          if (stepKey) {
+            setStepKeys((prev) =>
+              prev.includes(stepKey) ? prev : [...prev, stepKey],
+            );
+            setCompletedSteps((prev) =>
+              prev.includes(stepKey) ? prev : [...prev, stepKey],
+            );
+
+            // Next node becomes active (heuristic: we show the next un-completed step as active)
+            // We'll clear activeStep when done
+            setActiveStep(stepKey);
+          }
+        }
+
+        if (event === "final") {
+          const content = extractFinalContent(data);
+          setFinalContent(content);
+          setActiveStep(null);
+          setPhase(PHASES.done);
+        }
+
+        if (event === "error") {
+          const msg = typeof data === "string" ? data : JSON.stringify(data);
+          setErrorStep(activeStep);
+          setPhase(PHASES.error);
+          setStreamLog((prev) => [...prev, { event: "error", message: msg }]);
+        }
+      }
+    } catch (err) {
+      setPhase(PHASES.error);
+      setStreamLog((prev) => [
+        ...prev,
+        { event: "error", message: err.message },
+      ]);
+    }
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(finalContent);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownload = () => {
+    const blob = new Blob([finalContent], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${finalTopic.slice(0, 50).replace(/\s+/g, "-").toLowerCase()}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError("");
+    try {
+      const title = extractTitle(finalContent, finalTopic);
+      const blog = await createBlog(token, { title, content_md: finalContent });
+      navigate(`/blogs/${blog.id}`);
+    } catch (e) {
+      setSaveError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReset = () => {
+    abortRef.current = true;
+    setPhase(PHASES.idle);
+    setFinalContent("");
+    setTopic("");
+  };
+
+  return (
+    <Layout>
+      <div className="max-w-2xl mx-auto">
+        {/* ── Idle: input form ── */}
+        {phase === PHASES.idle && (
+          <div className="animate-slide-up space-y-6">
+            <div>
+              <h1 className="font-serif text-2xl text-ink mb-1">
+                Generate a Blog
+              </h1>
+              <p className="text-sm text-ink-3">
+                Describe a topic and your AI agent pipeline will plan, write,
+                and edit it.
+              </p>
+            </div>
+
+            {/* API Key */}
+            {showApiKey ? (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-ink-3 uppercase tracking-wide flex items-center gap-1.5">
+                  <IconKey size={13} /> Google Gemini API Key
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={localApiKey}
+                    onChange={(e) => setLocalApiKey(e.target.value)}
+                    placeholder="AIza..."
+                    className="flex-1 border border-rule rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent font-mono"
+                  />
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setApiKey(localApiKey);
+                      setShowApiKey(false);
+                    }}
+                    disabled={!localApiKey.trim()}
+                  >
+                    Save
+                  </Button>
+                </div>
+                <p className="text-xs text-ink-4">
+                  Stored in your browser only, never sent to our servers.
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-ink-3">
+                <IconKey size={13} />
+                <span>API key saved</span>
+                <button
+                  onClick={() => setShowApiKey(true)}
+                  className="text-accent hover:underline text-xs"
+                >
+                  change
+                </button>
+              </div>
+            )}
+
+            {/* Topic input */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-ink-3 uppercase tracking-wide">
+                Topic / Prompt
+              </label>
+              <textarea
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
+                    handleGenerate();
+                }}
+                placeholder="e.g. The rise of AI agents in software development…"
+                rows={4}
+                className="w-full border border-rule rounded-lg px-3.5 py-3 text-sm bg-white text-ink placeholder-ink-4 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent resize-none leading-relaxed"
+              />
+              <p className="text-xs text-ink-4">⌘ + Enter to generate</p>
+            </div>
+
+            <Button
+              onClick={handleGenerate}
+              disabled={!topic.trim() || !localApiKey.trim()}
+              size="lg"
+              className="w-full"
+            >
+              <IconPen size={15} />
+              Generate Blog
+            </Button>
+          </div>
+        )}
+
+        {/* ── Running: live pipeline ── */}
+        {phase === PHASES.running && (
+          <div className="animate-fade-in space-y-5">
+            <div className="flex items-center gap-3">
+              <Spinner size={18} className="text-accent" />
+              <div>
+                <p className="text-sm font-medium text-ink">Generating…</p>
+                <p className="text-xs text-ink-3 truncate max-w-xs">
+                  "{finalTopic}"
+                </p>
+              </div>
+            </div>
+
+            <AgentPipeline
+              steps={stepKeys}
+              activeStep={activeStep}
+              completedSteps={completedSteps}
+              errorStep={errorStep}
+            />
+
+            {/* Raw stream log */}
+            {streamLog.length > 0 && (
+              <details className="group">
+                <summary className="text-xs text-ink-4 cursor-pointer hover:text-ink-3 select-none list-none flex items-center gap-1">
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="transition-transform group-open:rotate-90"
+                  >
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                  Stream log ({streamLog.length} events)
+                </summary>
+                <div className="mt-2 bg-ink rounded-lg p-3 max-h-40 overflow-y-auto scrollbar-thin">
+                  {streamLog.map((entry, i) => (
+                    <div
+                      key={i}
+                      className="text-xs font-mono text-surface-3 mb-1"
+                    >
+                      <span className="text-accent-light">[{entry.event}]</span>{" "}
+                      {entry.stepKey && (
+                        <span className="text-yellow-400">
+                          {entry.stepKey}{" "}
+                        </span>
+                      )}
+                      <span className="opacity-50">
+                        {JSON.stringify(entry.data || entry.message).slice(
+                          0,
+                          120,
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+
+        {/* ── Error ── */}
+        {phase === PHASES.error && (
+          <div className="animate-fade-in space-y-4">
+            <div className="border border-red-200 bg-red-50 rounded-lg p-4">
+              <p className="text-sm font-medium text-red-700 mb-1">
+                Generation failed
+              </p>
+              <p className="text-xs text-red-500 font-mono">
+                {streamLog
+                  .filter((e) => e.event === "error")
+                  .map((e) => e.message)
+                  .join(" ") || "Unknown error"}
+              </p>
+            </div>
+            <AgentPipeline
+              steps={stepKeys}
+              activeStep={null}
+              completedSteps={completedSteps}
+              errorStep={errorStep}
+            />
+            <Button variant="secondary" onClick={handleReset}>
+              Try again
+            </Button>
+          </div>
+        )}
+
+        {/* ── Done: blog output ── */}
+        {phase === PHASES.done && finalContent && (
+          <div className="animate-fade-in space-y-5">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#2d5a27"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  <span className="text-sm text-accent font-medium">
+                    Generated
+                  </span>
+                </div>
+                <h2 className="font-serif text-xl text-ink leading-snug">
+                  {extractTitle(finalContent, finalTopic)}
+                </h2>
+                <p className="text-xs text-ink-4 mt-1">
+                  {finalContent.split(/\s+/).filter(Boolean).length} words
+                </p>
+              </div>
+              <Button variant="secondary" size="sm" onClick={handleReset}>
+                New blog
+              </Button>
+            </div>
+
+            {/* Toolbar */}
+            <div className="flex items-center justify-between">
+              <div className="flex gap-1">
+                {["preview", "raw"].map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setView(v)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-colors ${
+                      view === v
+                        ? "bg-surface-3 text-ink"
+                        : "text-ink-4 hover:text-ink hover:bg-surface-2"
+                    }`}
+                  >
+                    {v === "preview" ? "Preview" : "Markdown"}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" onClick={handleCopy}>
+                  {copied ? (
+                    <IconCheck size={13} className="text-accent" />
+                  ) : (
+                    <IconCopy size={13} />
+                  )}
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={handleDownload}>
+                  <IconDownload size={13} />
+                  .md
+                </Button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="border border-rule rounded-xl bg-white overflow-hidden">
+              <div className="max-h-[52vh] overflow-y-auto scrollbar-thin px-6 py-5">
+                {view === "preview" ? (
+                  <div className="prose-blog">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {finalContent}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <pre className="text-xs font-mono text-ink-2 whitespace-pre-wrap leading-relaxed">
+                    {finalContent}
+                  </pre>
+                )}
+              </div>
+            </div>
+
+            {/* Save */}
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={handleSave}
+                disabled={saving}
+                size="lg"
+                className="flex-1"
+              >
+                {saving ? (
+                  <Spinner size={15} />
+                ) : (
+                  <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                    <polyline points="17 21 17 13 7 13 7 21" />
+                    <polyline points="7 3 7 8 15 8" />
+                  </svg>
+                )}
+                {saving ? "Saving…" : "Save to My Blogs"}
+              </Button>
+            </div>
+            {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+          </div>
+        )}
+      </div>
+    </Layout>
+  );
+}

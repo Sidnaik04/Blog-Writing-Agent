@@ -64,46 +64,80 @@ def writer_node(state: State, llm):
 
 
 def decide_images(state: State, llm):
-    prompt = f"""
-Find max 2 images needed in this blog.
-Return placeholders like [[IMAGE_1]] and description.
+    """Extract image requirements from blog content"""
+    prompt = f"""Analyze this blog and extract max 2 image search queries (short, simple keywords).
+Return ONLY a Python list of dicts like:
+[{{"placeholder": "[[IMAGE_1]]", "prompt": "keyword or short phrase for unsplash search"}}, ...]
+
+Blog:
 {state['md_with_placeholders']}
 """
     res = llm.invoke([HumanMessage(content=prompt)])
 
-    # Simplified parsing
-    return {
-        "image_specs": [
-            {
-                "placeholder": "[[IMAGE_1]]",
-                "prompt": "technical diagram explaining topic",
+    try:
+        # Simple fallback parsing
+        content = res.content
+        if "[[IMAGE_1]]" in content:
+            return {
+                "image_specs": [
+                    {
+                        "placeholder": "[[IMAGE_1]]",
+                        "prompt": state["topic"] or "professional business",
+                    }
+                ]
             }
-        ]
-    }
+        return {"image_specs": []}
+    except:
+        return {
+            "image_specs": [
+                {
+                    "placeholder": "[[IMAGE_1]]",
+                    "prompt": state["topic"] or "professional",
+                }
+            ]
+        }
 
 
 # ============================================================
 # GEMINI IMAGE GENERATION
 # ============================================================
 
+import requests
+
+
+def fetch_image_from_unsplash(search_query: str) -> bytes:
+    """Fetch image from Unsplash API - instant and free"""
+    url = "https://api.unsplash.com/photos/random"
+    params = {
+        "query": search_query,
+        "w": 800,
+        "h": 600,
+    }
+    headers = {
+        "Authorization": "Client-ID Z65HKJRpAZ92pjHCXDgQjy7IrAiKLLWTc3lpdAu5f6U"  # Public key
+    }
+
+    try:
+        resp = requests.get(url, params=params, headers=headers, timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Download the image
+        img_url = data.get("urls", {}).get("regular", "")
+        if not img_url:
+            raise Exception("No image URL found")
+
+        img_resp = requests.get(img_url, timeout=5)
+        img_resp.raise_for_status()
+        return img_resp.content
+    except Exception as e:
+        print(f"Unsplash image fetch failed: {e}")
+        raise
+
 
 def generate_image_bytes(prompt: str, api_key: str) -> bytes:
-    from google import genai
-    from google.genai import types
-
-    client = genai.Client(api_key=api_key)
-
-    resp = client.models.generate_content(
-        model="gemini-2.5-flash-image",
-        contents=prompt,
-        config=types.GenerateContentConfig(response_modalities=["IMAGE"]),
-    )
-
-    for part in resp.parts:
-        if part.inline_data:
-            return part.inline_data.data
-
-    raise Exception("No image generated")
+    """Fallback to Unsplash instead of slow Gemini image generation"""
+    return fetch_image_from_unsplash(prompt)
 
 
 # ============================================================
