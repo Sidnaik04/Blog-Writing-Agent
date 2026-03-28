@@ -20,11 +20,17 @@ def create_blog(
 ):
     new_blog = Blog(title=blog.title, content_md=blog.content_md, user_id=user.id)
 
-    store_blog(new_blog.id, new_blog.content_md)
-
+    # Commit first to ensure ID is assigned
     db.add(new_blog)
     db.commit()
     db.refresh(new_blog)
+
+    # Then store in RAG system (ChromaDB)
+    try:
+        store_blog(new_blog.id, new_blog.content_md)
+    except Exception as e:
+        print(f"Warning: Failed to store blog in RAG system: {e}")
+        # Don't fail the whole request if RAG fails
 
     return new_blog
 

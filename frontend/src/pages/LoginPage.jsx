@@ -14,38 +14,6 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Load Google GSI script
-  useEffect(() => {
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    document.head.appendChild(script);
-  }, []);
-
-  // Initialize Google Sign-In once script is loaded
-  useEffect(() => {
-    if (token) {
-      navigate("/generate");
-      return;
-    }
-
-    if (!window.google) return;
-
-    window.google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: handleCredentialResponse,
-    });
-
-    window.google.accounts.id.renderButton(btnRef.current, {
-      theme: "outline",
-      size: "large",
-      text: "continue_with",
-      shape: "rectangular",
-      width: 280,
-    });
-  }, [token, GOOGLE_CLIENT_ID]);
-
   const handleCredentialResponse = async (response) => {
     setLoading(true);
     setError("");
@@ -59,6 +27,42 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  const initializeGoogle = () => {
+    if (!window.google || !btnRef.current) return;
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleCredentialResponse,
+    });
+    window.google.accounts.id.renderButton(btnRef.current, {
+      theme: "outline",
+      size: "large",
+      text: "continue_with",
+      shape: "rectangular",
+      width: 280,
+    });
+  };
+
+  // Load Google GSI script and initialize button once it's ready
+  useEffect(() => {
+    if (token) {
+      navigate("/generate");
+      return;
+    }
+
+    // If already loaded (e.g. hot-reload), initialize immediately
+    if (window.google) {
+      initializeGoogle();
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = initializeGoogle;
+    document.head.appendChild(script);
+  }, [token]);
 
   return (
     <div className="min-h-screen bg-surface flex items-center justify-center px-4">

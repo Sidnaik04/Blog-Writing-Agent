@@ -2,7 +2,16 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getBlogs, deleteBlog } from "../services/api";
-import { Button, Spinner, IconTrash, IconChat, IconArrow, IconPen } from "../components/ui";
+import {
+  Button,
+  Spinner,
+  IconTrash,
+  IconChat,
+  IconArrow,
+  IconPen,
+  IconCopy,
+  IconDownload,
+} from "../components/ui";
 import Layout from "../components/Layout";
 
 function timeAgo(dateStr) {
@@ -20,6 +29,7 @@ export default function BlogsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(null);
+  const [copied, setCopied] = useState(null);
 
   const fetchBlogs = async () => {
     setLoading(true);
@@ -33,7 +43,9 @@ export default function BlogsPage() {
     }
   };
 
-  useEffect(() => { fetchBlogs(); }, []);
+  useEffect(() => {
+    fetchBlogs();
+  }, []);
 
   const handleDelete = async (e, blogId) => {
     e.preventDefault();
@@ -42,12 +54,32 @@ export default function BlogsPage() {
     setDeleting(blogId);
     try {
       await deleteBlog(token, blogId);
-      setBlogs(prev => prev.filter(b => b.id !== blogId));
+      setBlogs((prev) => prev.filter((b) => b.id !== blogId));
     } catch (e) {
       alert(e.message);
     } finally {
       setDeleting(null);
     }
+  };
+
+  const handleCopy = (e, content) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownload = (e, title, content) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const blob = new Blob([content], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title.slice(0, 50).replace(/\s+/g, "-").toLowerCase()}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -57,7 +89,9 @@ export default function BlogsPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="font-serif text-2xl text-ink">My Blogs</h1>
-            <p className="text-sm text-ink-3 mt-0.5">{blogs.length} saved {blogs.length === 1 ? "blog" : "blogs"}</p>
+            <p className="text-sm text-ink-3 mt-0.5">
+              {blogs.length} saved {blogs.length === 1 ? "blog" : "blogs"}
+            </p>
           </div>
           <Button as={Link} to="/generate" size="sm">
             <IconPen size={13} />
@@ -76,7 +110,9 @@ export default function BlogsPage() {
         {error && (
           <div className="border border-red-200 bg-red-50 rounded-lg p-4 text-sm text-red-600">
             {error}
-            <button onClick={fetchBlogs} className="ml-2 underline">Retry</button>
+            <button onClick={fetchBlogs} className="ml-2 underline">
+              Retry
+            </button>
           </div>
         )}
 
@@ -87,7 +123,9 @@ export default function BlogsPage() {
               <IconPen size={18} className="text-ink-4" />
             </div>
             <p className="text-sm font-medium text-ink-2 mb-1">No blogs yet</p>
-            <p className="text-xs text-ink-4 mb-4">Generate your first blog to get started.</p>
+            <p className="text-xs text-ink-4 mb-4">
+              Generate your first blog to get started.
+            </p>
             <Link to="/generate">
               <Button size="sm">Generate a Blog</Button>
             </Link>
@@ -115,24 +153,45 @@ export default function BlogsPage() {
                     )}
                     <div className="flex items-center gap-3 mt-2">
                       {blog.created_at && (
-                        <span className="text-xs text-ink-4">{timeAgo(blog.created_at)}</span>
+                        <span className="text-xs text-ink-4">
+                          {timeAgo(blog.created_at)}
+                        </span>
                       )}
                       <span className="text-xs text-ink-4">
-                        {blog.content_md?.split(/\s+/).filter(Boolean).length || 0} words
+                        {blog.content_md?.split(/\s+/).filter(Boolean).length ||
+                          0}{" "}
+                        words
                       </span>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <button
+                      onClick={(e) => handleCopy(e, blog.content_md)}
+                      className="p-1.5 rounded-md text-ink-4 hover:text-accent hover:bg-surface-2 transition-colors opacity-0 group-hover:opacity-100"
+                      title="Copy"
+                    >
+                      <IconCopy size={13} />
+                    </button>
+                    <button
+                      onClick={(e) =>
+                        handleDownload(e, blog.title, blog.content_md)
+                      }
+                      className="p-1.5 rounded-md text-ink-4 hover:text-accent hover:bg-surface-2 transition-colors opacity-0 group-hover:opacity-100"
+                      title="Download"
+                    >
+                      <IconDownload size={13} />
+                    </button>
+                    <button
                       onClick={(e) => handleDelete(e, blog.id)}
                       className="p-1.5 rounded-md text-ink-4 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
                       title="Delete"
                     >
-                      {deleting === blog.id
-                        ? <Spinner size={13} />
-                        : <IconTrash size={13} />
-                      }
+                      {deleting === blog.id ? (
+                        <Spinner size={13} />
+                      ) : (
+                        <IconTrash size={13} />
+                      )}
                     </button>
                     <span className="text-ink-4 opacity-0 group-hover:opacity-100 transition-opacity">
                       <IconArrow size={14} />

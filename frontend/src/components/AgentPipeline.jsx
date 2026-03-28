@@ -1,14 +1,50 @@
-// Maps LangGraph node names (from graph.stream updates) to display info.
-// The keys match what your langgraph_service nodes are named.
-// Adjust AGENT_NODES keys to match your actual node names.
+import {
+  RotateCw,
+  Search,
+  BookOpen,
+  PenTool,
+  Sparkles,
+  CheckCircle2,
+  AlertCircle,
+  Circle,
+} from "lucide-react";
+
+// Maps LangGraph node names to display info with lucide icons
 const AGENT_NODES = {
-  planner:   { label: "Planner",  desc: "Researching topic & outlining sections",    icon: "📋" },
-  researcher:{ label: "Researcher",desc: "Gathering evidence & references",          icon: "🔍" },
-  writer:    { label: "Writer",   desc: "Drafting content from the outline",          icon: "✍️" },
-  editor:    { label: "Editor",   desc: "Refining tone, flow & quality",              icon: "✅" },
+  router: {
+    label: "Router",
+    desc: "Analyzing topic & deciding research mode",
+    Icon: RotateCw,
+  },
+  research: {
+    label: "Researcher",
+    desc: "Searching the web via Tavily",
+    Icon: Search,
+  },
+  orchestrator: {
+    label: "Planner",
+    desc: "Creating structured blog outline",
+    Icon: BookOpen,
+  },
+  worker: {
+    label: "Writers",
+    desc: "Drafting sections in parallel",
+    Icon: PenTool,
+  },
+  reducer: {
+    label: "Finisher",
+    desc: "Merging, adding images & polishing",
+    Icon: Sparkles,
+  },
 };
 
-const FALLBACK_STEPS = ["planner", "writer", "editor"];
+const FALLBACK_STEPS = [
+  "router",
+  "research",
+  "orchestrator",
+  "worker",
+  "reducer",
+];
 
 function guessStepFromData(data) {
   if (!data || typeof data !== "object") return null;
@@ -29,68 +65,106 @@ function guessStepFromData(data) {
   return null;
 }
 
-export default function AgentPipeline({ steps, activeStep, completedSteps, errorStep }) {
-  // steps = array of step keys e.g. ["planner","writer","editor"]
-  const displaySteps = steps.length > 0 ? steps : FALLBACK_STEPS;
+export default function AgentPipeline({
+  steps,
+  activeStep,
+  completedSteps,
+  errorStep,
+}) {
+  const displaySteps = FALLBACK_STEPS;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {displaySteps.map((key, i) => {
-        const meta = AGENT_NODES[key] || { label: key, desc: "", icon: "⚙️" };
+        const meta = AGENT_NODES[key] || {
+          label: key,
+          desc: "",
+          Icon: Circle,
+        };
+        const { Icon } = meta;
         const isDone = completedSteps.includes(key);
         const isActive = activeStep === key;
         const isError = errorStep === key;
-        const isPending = !isDone && !isActive && !isError;
 
         return (
           <div
             key={key}
-            className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-all duration-300 ${
-              isActive  ? "border-accent/40 bg-accent-muted"  :
-              isDone    ? "border-rule bg-surface-2"           :
-              isError   ? "border-red-200 bg-red-50"           :
-                          "border-rule bg-surface"
+            className={`group relative rounded-lg border px-4 py-3 transition-all duration-300 ${
+              isActive
+                ? "border-accent bg-accent/5 shadow-md shadow-accent/30"
+                : isDone
+                  ? "border-accent/30 bg-accent/5"
+                  : isError
+                    ? "border-red-400 bg-red-50"
+                    : "border-rule/30 bg-surface-2"
             }`}
           >
-            {/* Status indicator */}
-            <div className="w-5 h-5 flex-shrink-0 flex items-center justify-center">
-              {isDone && (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2d5a27" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              )}
-              {isActive && (
-                <span className="flex gap-0.5">
-                  {[0,1,2].map(i => (
-                    <span key={i} className="step-dot w-1.5 h-1.5 rounded-full bg-accent block" />
-                  ))}
-                </span>
-              )}
-              {isError && (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              )}
-              {isPending && (
-                <span className="w-2 h-2 rounded-full bg-rule block" />
-              )}
+            <div className="flex items-start gap-3">
+              {/* Icon with size constraints */}
+              <div className="flex-shrink-0 w-6 h-6 flex items-center justify-center pt-0.5">
+                {isActive && (
+                  <div className="relative w-5 h-5 flex items-center justify-center">
+                    <Icon
+                      size={20}
+                      className="text-accent animate-spin"
+                      strokeWidth={2}
+                    />
+                  </div>
+                )}
+                {isDone && (
+                  <CheckCircle2
+                    size={20}
+                    className="text-accent"
+                    strokeWidth={2.5}
+                  />
+                )}
+                {isError && (
+                  <AlertCircle
+                    size={20}
+                    className="text-red-600"
+                    strokeWidth={2}
+                  />
+                )}
+                {!isActive && !isDone && !isError && (
+                  <Circle size={20} className="text-rule/40" strokeWidth={2} />
+                )}
+              </div>
+
+              {/* Text content */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3
+                    className={`text-sm font-semibold ${
+                      isActive
+                        ? "text-accent"
+                        : isDone
+                          ? "text-ink-2"
+                          : isError
+                            ? "text-red-600"
+                            : "text-ink-3"
+                    }`}
+                  >
+                    {meta.label}
+                  </h3>
+                  <span className="text-xs text-rule/50 font-mono">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                </div>
+                {meta.desc && (
+                  <p
+                    className={`text-xs mt-0.5 ${
+                      isActive
+                        ? "text-ink-3"
+                        : isDone
+                          ? "text-ink-4"
+                          : "text-ink-4"
+                    }`}
+                  >
+                    {meta.desc}
+                  </p>
+                )}
+              </div>
             </div>
-
-            {/* Label */}
-            <span className={`text-sm font-medium ${
-              isActive ? "text-accent" :
-              isDone   ? "text-ink-2"  :
-              isError  ? "text-red-600":
-                         "text-ink-4"
-            }`}>
-              {meta.icon} {meta.label}
-            </span>
-
-            {/* Description */}
-            <span className="text-xs text-ink-4 flex-1">{meta.desc}</span>
-
-            {/* Step number */}
-            <span className="text-xs text-ink-4 font-mono">{String(i + 1).padStart(2, "0")}</span>
           </div>
         );
       })}
@@ -98,4 +172,5 @@ export default function AgentPipeline({ steps, activeStep, completedSteps, error
   );
 }
 
+// Add custom animation styles
 export { guessStepFromData, AGENT_NODES };

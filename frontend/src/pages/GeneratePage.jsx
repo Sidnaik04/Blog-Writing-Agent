@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -13,6 +13,7 @@ import {
   IconCheck,
   IconDownload,
   IconPen,
+  IconArrow,
 } from "../components/ui";
 import Layout from "../components/Layout";
 
@@ -63,8 +64,35 @@ export default function GeneratePage() {
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   const abortRef = useRef(false);
+  const startTimeRef = useRef(null);
+  const previousStepRef = useRef(null);
+
+  // Calculate estimated remaining time (assuming ~240 seconds total)
+  const estimatedTotalSeconds = 240;
+  const estimatedRemaining = Math.max(
+    0,
+    estimatedTotalSeconds - elapsedSeconds,
+  );
+  const remainingMinutes = Math.floor(estimatedRemaining / 60);
+  const remainingSeconds = estimatedRemaining % 60;
+
+  // When activeStep changes, mark the previous step as completed
+  useEffect(() => {
+    if (phase === PHASES.running && activeStep) {
+      if (previousStepRef.current && previousStepRef.current !== activeStep) {
+        // New step started, mark previous as completed
+        const prevStep = previousStepRef.current;
+        setCompletedSteps((prev) =>
+          prev.includes(prevStep) ? prev : [...prev, prevStep],
+        );
+      }
+      previousStepRef.current = activeStep;
+    }
+  }, [activeStep, phase]);
 
   const handleGenerate = async () => {
     if (!topic.trim()) return;
@@ -85,38 +113,88 @@ export default function GeneratePage() {
     setFinalTopic(topic.trim());
 
     try {
+      console.log("🔄 Starting stream... about to enter for-await loop");
+
       for await (const { event, data } of streamGenerate(
         token,
         topic.trim(),
         localApiKey.trim(),
       )) {
+        console.log("📡 Raw event received:", {
+          event,
+          dataType: typeof data,
+          dataKeys: typeof data === "object" ? Object.keys(data) : "not-object",
+        });
+
         if (abortRef.current) break;
 
         if (event === "update") {
           // Detect which node just ran
           const stepKey = guessStepFromData(data);
 
+          console.log("📨 SSE Update event:", {
+            stepKey,
+            dataKeys: Object.keys(data || {}),
+            data,
+          });
+
           setStreamLog((prev) => [...prev, { event, data, stepKey }]);
 
           if (stepKey) {
+            // Add step to list if not already there
             setStepKeys((prev) =>
               prev.includes(stepKey) ? prev : [...prev, stepKey],
             );
-            setCompletedSteps((prev) =>
-              prev.includes(stepKey) ? prev : [...prev, stepKey],
-            );
 
-            // Next node becomes active (heuristic: we show the next un-completed step as active)
-            // We'll clear activeStep when done
+            // Set current step as active (useEffect will handle marking previous as completed)
             setActiveStep(stepKey);
           }
+        } else if (event === "log") {
+          console.log("📝 Log event from backend:", data);
         }
 
         if (event === "final") {
           const content = extractFinalContent(data);
+          console.log("🎉 Final content received:", {
+            dataKeys:
+              typeof data === "object" ? Object.keys(data) : "not-object",
+            contentLength: content.length,
+            contentPreview: content.substring(0, 100),
+          });
           setFinalContent(content);
-          setActiveStep(null);
+
+          // ✅ CRITICAL: Set phase to done immediately when final content arrives
           setPhase(PHASES.done);
+
+          // Mark the last active step as completed
+          if (activeStep) {
+            setCompletedSteps((prev) =>
+              prev.includes(activeStep) ? prev : [...prev, activeStep],
+            );
+          }
+
+          setActiveStep(null);
+          previousStepRef.current = null;
+          if (content && content.trim().length > 0) {
+            try {
+              const title = extractTitle(content, finalTopic);
+              setSaving(true);
+              createBlog(token, { title, content_md: content })
+                .then((blog) => {
+                  console.log("✅ Blog auto-saved:", blog.id);
+                  setSaving(false);
+                  setSaved(true);
+                })
+                .catch((err) => {
+                  console.error("❌ Auto-save failed:", err.message);
+                  setSaveError(err.message);
+                  setSaving(false);
+                });
+            } catch (err) {
+              console.error("❌ Error during auto-save:", err);
+              setSaveError(err.message);
+            }
+          }
         }
 
         if (event === "error") {
@@ -127,6 +205,7 @@ export default function GeneratePage() {
         }
       }
     } catch (err) {
+      console.error("❌ Error in for-await loop:", err.message, err);
       setPhase(PHASES.error);
       setStreamLog((prev) => [
         ...prev,
@@ -170,7 +249,34 @@ export default function GeneratePage() {
     setPhase(PHASES.idle);
     setFinalContent("");
     setTopic("");
+    setSaved(false);
+    setSaveError("");
+    setElapsedSeconds(0);
+    setStepKeys([]);
+    setActiveStep(null);
+    setCompletedSteps([]);
+    previousStepRef.current = null;
+    startTimeRef.current = null;
   };
+
+  // Timer for elapsed time during generation
+  useEffect(() => {
+    let interval;
+    if (phase === PHASES.running) {
+      if (!startTimeRef.current) {
+        startTimeRef.current = Date.now();
+      }
+      interval = setInterval(() => {
+        setElapsedSeconds(
+          Math.floor((Date.now() - startTimeRef.current) / 1000),
+        );
+      }, 1000);
+    } else {
+      setElapsedSeconds(0);
+      startTimeRef.current = null;
+    }
+    return () => clearInterval(interval);
+  }, [phase]);
 
   return (
     <Layout>
@@ -263,14 +369,46 @@ export default function GeneratePage() {
 
         {/* ── Running: live pipeline ── */}
         {phase === PHASES.running && (
-          <div className="animate-fade-in space-y-5">
-            <div className="flex items-center gap-3">
-              <Spinner size={18} className="text-accent" />
-              <div>
-                <p className="text-sm font-medium text-ink">Generating…</p>
-                <p className="text-xs text-ink-3 truncate max-w-xs">
-                  "{finalTopic}"
-                </p>
+          <div className="animate-fade-in space-y-8">
+            {/* Header with elapsed time */}
+            <div className="space-y-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="relative">
+                      <Spinner size={20} className="text-accent" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-semibold text-ink">
+                        Generating Your Blog
+                      </h2>
+                      <p className="text-sm text-ink-3 mt-1">"{finalTopic}"</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Timer display */}
+              <div className="flex items-center gap-6 px-5 py-4 bg-gradient-to-r from-accent/5 to-accent-light/5 rounded-xl border border-accent/20">
+                <div>
+                  <p className="text-xs font-semibold text-ink-3 uppercase tracking-wider mb-1">
+                    Elapsed Time
+                  </p>
+                  <p className="font-mono font-bold text-accent text-xl">
+                    {Math.floor(elapsedSeconds / 60)}m{" "}
+                    {String(elapsedSeconds % 60).padStart(2, "0")}s
+                  </p>
+                </div>
+                <div className="h-12 w-px bg-rule/20" />
+                <div>
+                  <p className="text-xs font-semibold text-ink-3 uppercase tracking-wider mb-1">
+                    Est. Remaining
+                  </p>
+                  <p className="font-mono font-bold text-ink-2 text-xl">
+                    ~{remainingMinutes}m{" "}
+                    {String(remainingSeconds).padStart(2, "0")}s
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -438,33 +576,65 @@ export default function GeneratePage() {
             </div>
 
             {/* Save */}
-            <div className="flex items-center gap-3">
-              <Button
-                onClick={handleSave}
-                disabled={saving}
-                size="lg"
-                className="flex-1"
-              >
-                {saving ? (
-                  <Spinner size={15} />
-                ) : (
-                  <svg
-                    width="15"
-                    height="15"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                    <polyline points="17 21 17 13 7 13 7 21" />
-                    <polyline points="7 3 7 8 15 8" />
-                  </svg>
-                )}
-                {saving ? "Saving…" : "Save to My Blogs"}
-              </Button>
+            <div className="flex flex-col gap-3">
+              {saved ? (
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg p-3">
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#2d5a27"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    <span className="text-sm font-medium text-green-700">
+                      Blog saved! Download or view in My Blogs.
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  onClick={handleSave}
+                  disabled={saving}
+                  size="lg"
+                  className="w-full"
+                >
+                  {saving ? (
+                    <Spinner size={15} />
+                  ) : (
+                    <svg
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                      <polyline points="17 21 17 13 7 13 7 21" />
+                      <polyline points="7 3 7 8 15 8" />
+                    </svg>
+                  )}
+                  {saving ? "Saving…" : "Save to My Blogs"}
+                </Button>
+              )}
+              {saved && (
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  onClick={() => navigate("/blogs")}
+                >
+                  <IconArrow size={14} />
+                  View My Blogs
+                </Button>
+              )}
             </div>
             {saveError && <p className="text-xs text-red-500">{saveError}</p>}
           </div>
