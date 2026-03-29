@@ -252,6 +252,73 @@ export async function* streamGenerate(token, topic, apiKey) {
       }
     }
 
+    // CRITICAL: Process remaining buffer after stream ends
+    // The final event often arrives in the last chunk and stays in the buffer
+    if (buffer.trim()) {
+      console.log(
+        `⏳ Processing final buffer after stream end: ${buffer.length} bytes`,
+      );
+
+      // Split by "event:" to handle any remaining events
+      const eventStrs = buffer.split(/(?=event:)/).filter((s) => s.trim());
+
+      for (const eventStr of eventStrs) {
+        let eventType = "unknown";
+        let dataLines = [];
+
+        for (const line of eventStr.split("\n")) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith("event: ")) {
+            eventType = trimmed.slice(7).trim();
+          } else if (trimmed.startsWith("data: ")) {
+            dataLines.push(trimmed.slice(6));
+          }
+        }
+
+        const dataStr = dataLines.join("\n").trim();
+
+        if (!dataStr) {
+          console.log("⚠️ Empty data in final buffer, skipping");
+          continue;
+        }
+
+        let parsed;
+        try {
+          parsed = JSON.parse(dataStr);
+        } catch (parseError) {
+          console.error(
+            "❌ Failed to parse final event JSON:",
+            parseError.message,
+            "Data preview:",
+            dataStr.substring(0, 200),
+          );
+          parsed = { raw: dataStr };
+        }
+
+        eventCount++;
+        console.log(
+          `📊 Event #${eventCount}: ${eventType} (from final buffer)`,
+          {
+            dataType: typeof parsed,
+            preview:
+              typeof parsed === "object"
+                ? JSON.stringify(parsed).substring(0, 150)
+                : String(parsed).substring(0, 150),
+          },
+        );
+
+        yield { event: eventType, data: parsed };
+
+        // Final event should close the stream
+        if (eventType === "final") {
+          console.log(
+            `✅ Final event received from buffer (event #${eventCount})`,
+          );
+          return;
+        }
+      }
+    }
+
     console.log(
       `✅ Stream ended normally. Total events processed: ${eventCount}`,
     );
