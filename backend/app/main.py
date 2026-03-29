@@ -48,4 +48,3 @@ def test_db(db: Session = Depends(get_db)):
 @app.get("/protected")
 def protected(user=Depends(get_current_user)):
     return {"message": f"Hello {user}"}
-

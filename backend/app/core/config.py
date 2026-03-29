@@ -1,6 +1,5 @@
 from pydantic_settings import BaseSettings
 
-
 class Settings(BaseSettings):
     # Database Configuration
     DATABASE_URL: str
@@ -15,8 +14,8 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str
     GOOGLE_API_KEY: str
 
-    # OpenAI Configuration
-    OPENAI_API_KEY: str = ""
+    # Gemini Configuration
+    GOOGLE_API_KEY: str = ""
 
     # Cloudinary Configuration
     CLOUDINARY_CLOUD_NAME: str
