@@ -78,126 +78,202 @@ export async function chatWithBlog(token, { blog_id, question, api_key }) {
 //   for await (const event of streamGenerate(token, topic, apiKey)) { ... }
 //
 // Each yielded value: { event: "update"|"final"|"error"|"log", data: any }
+//
+// Event types:
+//   - "log": Status message (e.g., graph building)
+//   - "update": LangGraph step output
+//   - "final": Generation complete with final markdown
+//   - "error": Error occurred during generation
 
 export async function* streamGenerate(token, topic, apiKey) {
-  console.log("🚀 Starting blog generation (job-based)...");
+  console.log("🚀 Starting blog generation (job-based architecture)...");
 
-  // Step 1: Create job and get job_id
-  const createRes = await fetch(`${API_BASE}/generate/`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: JSON.stringify({ topic, api_key: apiKey }),
-  });
+  let jobId = null;
 
-  if (!createRes.ok) {
-    console.error("❌ HTTP error:", createRes.status, createRes.statusText);
-    throw new Error(`Failed to create job: ${createRes.status}`);
-  }
+  try {
+    // Step 1: Create job and get job_id
+    console.log("📝 Step 1: Creating generation job...");
+    const createRes = await fetch(`${API_BASE}/generate/`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ topic, api_key: apiKey }),
+    });
 
-  const jobData = await createRes.json();
-  const jobId = jobData.job_id;
-
-  console.log(`✅ Job created: ${jobId}. Connecting to stream...`);
-
-  // Step 2: Stream events from the job
-  const streamRes = await fetch(`${API_BASE}/generate/stream/${jobId}`, {
-    method: "GET",
-    headers: authHeaders(token),
-  });
-
-  if (!streamRes.ok) {
-    console.error(
-      "❌ Stream HTTP error:",
-      streamRes.status,
-      streamRes.statusText,
-    );
-    throw new Error(`Stream connection failed: ${streamRes.status}`);
-  }
-
-  console.log("✅ Stream connected, reading events...");
-
-  const reader = streamRes.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let eventCount = 0;
-
-  while (true) {
-    const { done, value } = await reader.read();
-
-    if (value) {
-      const text = decoder.decode(value, { stream: true });
-      buffer += text;
-      console.log("📥 Received chunk:", text.length, "bytes");
+    if (!createRes.ok) {
+      console.error(
+        "❌ HTTP error creating job:",
+        createRes.status,
+        createRes.statusText,
+      );
+      throw new Error(
+        `Failed to create job: ${createRes.status} ${createRes.statusText}`,
+      );
     }
 
-    // Process complete SSE messages (separated by double newlines)
-    const parts = buffer.split("\n\n");
+    const jobData = await createRes.json();
+    jobId = jobData.job_id;
 
-    // Keep the last part in buffer (it might be incomplete)
-    if (!done) {
-      buffer = parts.pop();
-    } else {
-      // If stream is done, process everything including last part
-      buffer = "";
+    if (!jobId) {
+      throw new Error("Server did not return a job_id");
     }
 
-    for (const part of parts) {
-      if (!part.trim()) continue;
+    console.log(`✅ Job created: ${jobId}`);
+    console.log(`📡 Step 2: Connecting to stream...`);
 
-      // Split by "event:" to handle multiple events that might be in one part
-      const eventStrs = part.split(/(?=event:)/).filter((s) => s.trim());
+    // Step 2: Stream events from the job
+    const streamRes = await fetch(`${API_BASE}/generate/stream/${jobId}`, {
+      method: "GET",
+      headers: authHeaders(token),
+    });
 
-      for (const eventStr of eventStrs) {
-        let eventType = "message";
-        let dataLines = [];
+    if (!streamRes.ok) {
+      console.error(
+        "❌ Stream HTTP error:",
+        streamRes.status,
+        streamRes.statusText,
+      );
+      throw new Error(
+        `Stream connection failed: ${streamRes.status} ${streamRes.statusText}`,
+      );
+    }
 
-        for (const line of eventStr.split("\n")) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith("event: ")) {
-            eventType = trimmed.slice(7).trim();
-          } else if (trimmed.startsWith("data: ")) {
-            dataLines.push(trimmed.slice(6));
+    if (!streamRes.body) {
+      throw new Error("Response body is not readable");
+    }
+
+    console.log(`✅ Stream connected for job ${jobId}, reading events...`);
+
+    const reader = streamRes.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let eventCount = 0;
+    let hasError = false;
+
+    while (true) {
+      let chunk;
+      try {
+        const { done, value } = await reader.read();
+        chunk = value;
+
+        if (done) {
+          // Stream ended, process remaining buffer
+          if (buffer.trim()) {
+            console.log(`⚠️ Processing final buffer: ${buffer.length} bytes`);
+          }
+          break;
+        }
+      } catch (readError) {
+        console.error("❌ Stream read error:", readError.message);
+        throw new Error(`Failed to read stream: ${readError.message}`);
+      }
+
+      if (chunk) {
+        const text = decoder.decode(chunk, { stream: true });
+        buffer += text;
+        console.log(`📥 Received chunk: ${text.length} bytes`);
+      }
+
+      // Process complete SSE messages (separated by double newlines)
+      const parts = buffer.split("\n\n");
+
+      // Keep the last part in buffer (it might be incomplete)
+      buffer = parts.pop() || "";
+
+      for (const part of parts) {
+        if (!part.trim()) continue;
+
+        // Split by "event:" to handle multiple events that might be in one part
+        const eventStrs = part.split(/(?=event:)/).filter((s) => s.trim());
+
+        for (const eventStr of eventStrs) {
+          let eventType = "unknown";
+          let dataLines = [];
+
+          for (const line of eventStr.split("\n")) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("event: ")) {
+              eventType = trimmed.slice(7).trim();
+            } else if (trimmed.startsWith("data: ")) {
+              dataLines.push(trimmed.slice(6));
+            }
+          }
+
+          // Join data lines with newline (proper SSE format)
+          const dataStr = dataLines.join("\n").trim();
+
+          if (!dataStr) {
+            console.log("⚠️ Empty data for event, skipping");
+            continue;
+          }
+
+          let parsed;
+          try {
+            parsed = JSON.parse(dataStr);
+          } catch (parseError) {
+            console.error(
+              "❌ Failed to parse JSON:",
+              parseError.message,
+              "Data preview:",
+              dataStr.substring(0, 150),
+            );
+            parsed = { raw: dataStr };
+          }
+
+          eventCount++;
+          console.log(`📊 Event #${eventCount}: ${eventType}`, {
+            dataType: typeof parsed,
+            preview:
+              typeof parsed === "object"
+                ? JSON.stringify(parsed).substring(0, 100)
+                : String(parsed).substring(0, 100),
+          });
+
+          // Track errors to prevent infinite loops
+          if (eventType === "error") {
+            hasError = true;
+          }
+
+          yield { event: eventType, data: parsed };
+
+          // Stop processing after final event
+          if (eventType === "final") {
+            console.log(`✅ Final event received (event #${eventCount})`);
+            reader.cancel();
+            return;
+          }
+
+          // Safety: stop after error event
+          if (hasError) {
+            console.log(`⚠️ Stopping after error event`);
+            reader.cancel();
+            return;
           }
         }
-
-        // Join data lines with newline (proper SSE format)
-        const dataStr = dataLines.join("\n").trim();
-
-        if (!dataStr) {
-          console.log("⚠️ Empty data in event, skipping");
-          continue;
-        }
-
-        let parsed;
-        try {
-          parsed = JSON.parse(dataStr);
-        } catch (e) {
-          console.error(
-            "❌ Failed to parse JSON:",
-            e.message,
-            "Data preview:",
-            dataStr.substring(0, 100),
-          );
-          parsed = dataStr;
-        }
-
-        eventCount++;
-        console.log(`📊 Event #${eventCount}:`, {
-          eventType,
-          dataType: typeof parsed,
-          dataPreview:
-            typeof parsed === "object"
-              ? Object.keys(parsed)
-              : String(parsed).substring(0, 50),
-        });
-
-        yield { event: eventType, data: parsed };
       }
     }
 
-    if (done) {
-      console.log(`✅ Stream ended. Total events: ${eventCount}`);
-      break;
+    console.log(
+      `✅ Stream ended normally. Total events processed: ${eventCount}`,
+    );
+
+    if (eventCount === 0) {
+      console.warn(
+        "⚠️ No events received from stream. This might indicate a backend issue.",
+      );
     }
+  } catch (error) {
+    console.error("❌ streamGenerate error:", error.message);
+    console.error("Stack:", error.stack);
+
+    // Yield error event so UI can handle it
+    yield {
+      event: "error",
+      data: {
+        error: error.message,
+        jobId: jobId || "unknown",
+      },
+    };
+
+    throw error;
   }
 }
