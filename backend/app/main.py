@@ -6,7 +6,6 @@ from app.db.session import engine
 from app.api import auth, blog, generation, chat
 from app.api.deps import get_current_user
 from fastapi.middleware.cors import CORSMiddleware
-import os
 
 Base.metadata.create_all(bind=engine)
 
@@ -50,10 +49,3 @@ def test_db(db: Session = Depends(get_db)):
 def protected(user=Depends(get_current_user)):
     return {"message": f"Hello {user}"}
 
-
-port = int(os.getenv("PORT", 8000))
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run("app.main:app", host="0.0.0.0", port=port)
