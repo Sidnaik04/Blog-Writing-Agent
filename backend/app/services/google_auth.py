@@ -1,11 +1,8 @@
 from google.oauth2 import id_token
 from google.auth.transport import requests
-import os
-from dotenv import load_dotenv
+from app.core.config import settings
 
-load_dotenv()
-
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_ID = settings.GOOGLE_CLIENT_ID
 
 
 def verify_google_token(token: str):

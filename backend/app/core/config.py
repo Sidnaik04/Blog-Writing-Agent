@@ -1,19 +1,35 @@
-import os
-from pydantic_settings import BaseSettings  # Better than raw os.getenv
+from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
-    # Required - will raise clear error if missing
+    # Database Configuration
     DATABASE_URL: str
-    SECRET_KEY: str                     # For JWT
-    GOOGLE_API_KEY: str = None    # or whatever LLM key you use
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days default
 
-    # Optional with sensible defaults
+    # JWT Configuration
+    SECRET_KEY: str
     ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+
+    # Google Authentication
+    GOOGLE_CLIENT_ID: str
+    GOOGLE_CLIENT_SECRET: str
+    GOOGLE_API_KEY: str
+
+    # OpenAI Configuration
+    OPENAI_API_KEY: str = ""
+
+    # Cloudinary Configuration
+    CLOUDINARY_CLOUD_NAME: str
+    CLOUDINARY_API_KEY: str
+    CLOUDINARY_API_SECRET: str
+
+    # External APIs
+    TAVILY_API_KEY: str = ""
 
     class Config:
-        env_file = ".env"          # Only for local dev
+        env_file = ".env"
         case_sensitive = True
+
 
 # Global settings instance
 settings = Settings()

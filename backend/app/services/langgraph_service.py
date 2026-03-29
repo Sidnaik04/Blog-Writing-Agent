@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import operator
-import os
 import re
 from datetime import date, timedelta
 from pathlib import Path
@@ -14,9 +13,7 @@ from langgraph.types import Send
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
-from dotenv import load_dotenv
-
-load_dotenv()
+from app.core.config import settings
 
 # ============================================================
 # Blog Writer (Router → (Research?) → Orchestrator → Workers → ReducerWithImages)
@@ -136,36 +133,34 @@ def get_context_api_key():
     return _current_graph_api_key
 
 
-
 def get_llm(api_key: str = None):
     """Get or create the LLM instance (lazy initialization).
-    
+
     Uses the current API key context if set, otherwise uses provided api_key,
     then falls back to environment variable.
     """
     global _llm_instance, _current_api_key, _current_graph_api_key
-    
+
     # Determine which API key to use (in order of precedence)
-    api_key_to_use = api_key or _current_graph_api_key or os.getenv("GOOGLE_API_KEY")
-    
+    api_key_to_use = api_key or _current_graph_api_key or settings.GOOGLE_API_KEY
+
     # If API key changed since last instance, create new instance
     if api_key_to_use != _current_api_key:
         _current_api_key = api_key_to_use
         if api_key_to_use:
             _llm_instance = ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash",
-                api_key=api_key_to_use
+                model="gemini-2.5-flash", api_key=api_key_to_use
             )
         else:
             # Create instance without explicit API key (will use GOOGLE_API_KEY env var)
             _llm_instance = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
-    
+
     return _llm_instance
 
     # If no API key provided, use cached instance or create default one
     if _llm_instance is None:
-        # Try to get API key from environment or use the provided one
-        env_api_key = os.getenv("GOOGLE_API_KEY")
+        # Try to get API key from settings or use the provided one
+        env_api_key = settings.GOOGLE_API_KEY
         if env_api_key:
             _current_api_key = env_api_key
             _llm_instance = ChatGoogleGenerativeAI(
@@ -230,7 +225,7 @@ def route_next(state: State) -> str:
 # 5) Research (Tavily)
 # -----------------------------
 def _tavily_search(query: str, max_results: int = 5) -> List[dict]:
-    api_key = os.getenv("TAVILY_API_KEY")
+    api_key = settings.TAVILY_API_KEY
     if not api_key:
         return []
     try:

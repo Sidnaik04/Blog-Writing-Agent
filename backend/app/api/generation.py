@@ -3,11 +3,11 @@ from sse_starlette.sse import EventSourceResponse
 import json
 import logging
 import sys
-import os
 from datetime import date
 
 from app.api.deps import get_current_user
 from app.services.langgraph_service import build_graph
+from app.core.config import settings
 
 # Setup logging to console AND file
 logger = logging.getLogger(__name__)
@@ -31,9 +31,9 @@ async def generate_blog(request: Request, user=Depends(get_current_user)):
         "api_key", ""
     ).strip()  # Get API key from request, default to empty
 
-    # If no API key provided, use the developer's API key from environment
+    # If no API key provided, use the developer's API key from settings
     if not api_key:
-        api_key = os.getenv("GOOGLE_API_KEY", "")
+        api_key = settings.GOOGLE_API_KEY
 
     msg = f"🚀 Generate request received. User: {user}. Topic: {topic[:50] if topic else 'EMPTY'}..."
     logger.info(msg)
