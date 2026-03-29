@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, Request, HTTPException
+from fastapi import APIRouter, Depends, Request, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 import json
 import logging
 import sys
-import asyncio
 import uuid
+import asyncio
 from datetime import date
 
 from app.api.deps import get_current_user
@@ -30,10 +30,14 @@ jobs = {}
 
 
 @router.post("/")
-async def generate_blog(request: Request, user=Depends(get_current_user)):
+async def generate_blog(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    user=Depends(get_current_user),
+):
     """
     Start a blog generation job and return the job_id.
-    The actual generation runs in the background.
+    The actual generation runs in the background via FastAPI's BackgroundTasks.
     Use GET /stream/{job_id} to stream the results.
     """
     body = await request.json()
@@ -60,11 +64,14 @@ async def generate_blog(request: Request, user=Depends(get_current_user)):
         "error": None,
     }
 
-    # Start background task (non-blocking)
-    asyncio.create_task(run_generation(job_id, topic, api_key))
+    # Start background task using FastAPI's BackgroundTasks
+    # This ensures the task persists and won't be killed on Render
+    background_tasks.add_task(run_generation, job_id, topic, api_key)
 
-    logger.info(f"[{job_id}] Job created. Stream at GET /generate/stream/{job_id}")
-    print(f"[{job_id}] Job created", flush=True)
+    logger.info(
+        f"[{job_id}] Job created and queued. Stream at GET /generate/stream/{job_id}"
+    )
+    print(f"[{job_id}] Job created and queued for background execution", flush=True)
 
     return {"job_id": job_id}
 
@@ -73,7 +80,11 @@ async def run_generation(job_id: str, topic: str, api_key: str):
     """
     Background task that runs the LangGraph generation pipeline.
     Stores updates in jobs[job_id]["events"].
+    Managed by FastAPI's BackgroundTasks for production-safe execution.
     """
+    logger.info(f"[{job_id}] ⏳ Background task started by FastAPI BackgroundTasks")
+    print(f"[{job_id}] ⏳ Background task started", flush=True)
+
     try:
         logger.debug(f"[{job_id}] Building LangGraph...")
         print(f"[{job_id}] Building LangGraph...", flush=True)
@@ -165,6 +176,7 @@ async def run_generation(job_id: str, topic: str, api_key: str):
 
         logger.info(f"[{job_id}] ✅ Generation completed successfully")
         print(f"[{job_id}] ✅ Successfully completed blog generation", flush=True)
+        logger.info(f"[{job_id}] 🏁 Background task exiting (success)")
 
     except Exception as e:
         error_msg = f"❌ ERROR: {type(e).__name__}: {str(e)}"
@@ -175,6 +187,8 @@ async def run_generation(job_id: str, topic: str, api_key: str):
 
         jobs[job_id]["status"] = "error"
         jobs[job_id]["error"] = error_msg
+
+        logger.error(f"[{job_id}] 🏁 Background task exiting (error)")
 
 
 @router.get("/stream/{job_id}")
