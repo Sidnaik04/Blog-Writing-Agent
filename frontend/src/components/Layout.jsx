@@ -85,6 +85,16 @@ export default function Layout({ children }) {
       <main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-4 md:px-6 py-6 sm:py-8">
         {children}
       </main>
+
+      {/* Footer */}
+      <footer className="border-t border-rule bg-surface mt-12 sm:mt-16">
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-6 sm:py-8 text-center">
+          <p className="text-xs sm:text-sm text-ink-3">
+            Developed by{" "}
+            <span className="font-medium text-ink">Sidhant Naik</span>
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }
