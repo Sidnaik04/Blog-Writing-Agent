@@ -18,21 +18,30 @@ def create_blog(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    new_blog = Blog(title=blog.title, content_md=blog.content_md, user_id=user.id)
-
-    # Commit first to ensure ID is assigned
-    db.add(new_blog)
-    db.commit()
-    db.refresh(new_blog)
-
-    # Then store in RAG system (ChromaDB)
     try:
-        store_blog(new_blog.id, new_blog.content_md)
-    except Exception as e:
-        print(f"Warning: Failed to store blog in RAG system: {e}")
-        # Don't fail the whole request if RAG fails
+        new_blog = Blog(title=blog.title, content_md=blog.content_md, user_id=user.id)
 
-    return new_blog
+        # Commit first to ensure ID is assigned
+        db.add(new_blog)
+        db.commit()
+        db.refresh(new_blog)
+
+        # Then store in RAG system (ChromaDB) - don't fail if this fails
+        try:
+            store_blog(new_blog.id, new_blog.content_md)
+        except Exception as rag_error:
+            print(f"⚠️ Warning: Failed to store blog in RAG system: {rag_error}")
+            # Don't fail the whole request if RAG fails
+
+        return new_blog
+
+    except Exception as db_error:
+        # Rollback on any error
+        db.rollback()
+        print(f"❌ Error creating blog: {db_error}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create blog: {str(db_error)}"
+        )
 
 
 # Get All Blogs (for logged-in user)

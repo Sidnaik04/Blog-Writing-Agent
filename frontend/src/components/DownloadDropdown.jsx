@@ -1,11 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import {
-  Button,
-  Spinner,
-  IconDownload,
-  IconFileText,
-  IconFilePdf,
-} from "./ui";
+import html2pdf from "html2pdf.js";
+import { Button, Spinner, IconDownload, IconFileText, IconFilePdf } from "./ui";
 
 /**
  * Generates a safe filename from a title or topic string.
@@ -71,7 +66,7 @@ function markdownToHtml(md) {
   // Links
   html = html.replace(
     /\[([^\]]+)\]\(([^)]+)\)/g,
-    '<a href="$2" target="_blank">$1</a>'
+    '<a href="$2" target="_blank">$1</a>',
   );
 
   // Bold + Italic
@@ -83,55 +78,46 @@ function markdownToHtml(md) {
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
 
   // Tables
-  html = html.replace(
-    /(?:^\|.+\|$\n?)+/gm,
-    (tableBlock) => {
-      const rows = tableBlock.trim().split("\n");
-      if (rows.length < 2) return tableBlock;
+  html = html.replace(/(?:^\|.+\|$\n?)+/gm, (tableBlock) => {
+    const rows = tableBlock.trim().split("\n");
+    if (rows.length < 2) return tableBlock;
 
-      let tableHtml = "<table>";
-      rows.forEach((row, i) => {
-        // Skip separator row (|---|---|)
-        if (/^\|[\s-:|]+\|$/.test(row)) return;
-        const cells = row
-          .split("|")
-          .filter((c, idx, arr) => idx > 0 && idx < arr.length - 1)
-          .map((c) => c.trim());
-        const tag = i === 0 ? "th" : "td";
-        const rowTag = i === 0 ? "thead" : "";
-        const rowTagClose = i === 0 ? "</thead><tbody>" : "";
-        tableHtml += `<tr>${cells.map((c) => `<${tag}>${c}</${tag}>`).join("")}</tr>${rowTagClose}`;
-      });
-      tableHtml += "</tbody></table>";
-      return tableHtml;
-    }
-  );
+    let tableHtml = "<table>";
+    rows.forEach((row, i) => {
+      // Skip separator row (|---|---|)
+      if (/^\|[\s-:|]+\|$/.test(row)) return;
+      const cells = row
+        .split("|")
+        .filter((c, idx, arr) => idx > 0 && idx < arr.length - 1)
+        .map((c) => c.trim());
+      const tag = i === 0 ? "th" : "td";
+      const rowTag = i === 0 ? "thead" : "";
+      const rowTagClose = i === 0 ? "</thead><tbody>" : "";
+      tableHtml += `<tr>${cells.map((c) => `<${tag}>${c}</${tag}>`).join("")}</tr>${rowTagClose}`;
+    });
+    tableHtml += "</tbody></table>";
+    return tableHtml;
+  });
 
   // Unordered lists
-  html = html.replace(
-    /(?:^[\t ]*[-*]\s+.+$\n?)+/gm,
-    (block) => {
-      const items = block
-        .trim()
-        .split("\n")
-        .map((line) => `<li>${line.replace(/^[\t ]*[-*]\s+/, "")}</li>`)
-        .join("");
-      return `<ul>${items}</ul>`;
-    }
-  );
+  html = html.replace(/(?:^[\t ]*[-*]\s+.+$\n?)+/gm, (block) => {
+    const items = block
+      .trim()
+      .split("\n")
+      .map((line) => `<li>${line.replace(/^[\t ]*[-*]\s+/, "")}</li>`)
+      .join("");
+    return `<ul>${items}</ul>`;
+  });
 
   // Ordered lists
-  html = html.replace(
-    /(?:^\d+\.\s+.+$\n?)+/gm,
-    (block) => {
-      const items = block
-        .trim()
-        .split("\n")
-        .map((line) => `<li>${line.replace(/^\d+\.\s+/, "")}</li>`)
-        .join("");
-      return `<ol>${items}</ol>`;
-    }
-  );
+  html = html.replace(/(?:^\d+\.\s+.+$\n?)+/gm, (block) => {
+    const items = block
+      .trim()
+      .split("\n")
+      .map((line) => `<li>${line.replace(/^\d+\.\s+/, "")}</li>`)
+      .join("");
+    return `<ol>${items}</ol>`;
+  });
 
   // Paragraphs: wrap remaining loose text lines
   html = html
@@ -140,7 +126,11 @@ function markdownToHtml(md) {
       const trimmed = block.trim();
       if (!trimmed) return "";
       // Don't wrap blocks that are already HTML elements
-      if (/^<(h[1-6]|p|ul|ol|li|pre|blockquote|table|thead|tbody|tr|th|td|hr|img|div)[\s>]/i.test(trimmed)) {
+      if (
+        /^<(h[1-6]|p|ul|ol|li|pre|blockquote|table|thead|tbody|tr|th|td|hr|img|div)[\s>]/i.test(
+          trimmed,
+        )
+      ) {
         return trimmed;
       }
       // Wrap plain text lines in <p>
@@ -149,7 +139,12 @@ function markdownToHtml(md) {
         .map((line) => {
           const l = line.trim();
           if (!l) return "";
-          if (/^<(h[1-6]|p|ul|ol|li|pre|blockquote|table|thead|tbody|tr|th|td|hr|img|div)[\s>]/i.test(l)) return l;
+          if (
+            /^<(h[1-6]|p|ul|ol|li|pre|blockquote|table|thead|tbody|tr|th|td|hr|img|div)[\s>]/i.test(
+              l,
+            )
+          )
+            return l;
           return `<p>${l}</p>`;
         })
         .join("\n");
@@ -169,8 +164,6 @@ function markdownToHtml(md) {
  * so the cloned DOM renders fully for the canvas capture.
  */
 async function downloadPdf(content, title) {
-  const html2pdf = (await import("html2pdf.js")).default;
-
   const htmlContent = markdownToHtml(content);
 
   // Outer wrapper — hides from user via overflow:hidden + height:0
@@ -191,7 +184,8 @@ async function downloadPdf(content, title) {
   Object.assign(container.style, {
     width: "750px",
     padding: "40px",
-    fontFamily: "'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif",
+    fontFamily:
+      "'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif",
     fontSize: "14px",
     lineHeight: "1.7",
     color: "#1a1a2e",
@@ -368,10 +362,7 @@ export default function DownloadDropdown({
 
       {open && (
         <div className="download-dropdown-menu">
-          <button
-            className="download-dropdown-item"
-            onClick={handleDownloadMd}
-          >
+          <button className="download-dropdown-item" onClick={handleDownloadMd}>
             <IconFileText size={15} className="text-ink-3" />
             <div className="download-dropdown-item-text">
               <span className="download-dropdown-item-label">Markdown</span>

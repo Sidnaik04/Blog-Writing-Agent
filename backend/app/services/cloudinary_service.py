@@ -1,6 +1,7 @@
 import cloudinary
 import cloudinary.uploader
 from io import BytesIO
+import os
 from app.core.config import settings
 
 cloudinary.config(
