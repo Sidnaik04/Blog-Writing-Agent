@@ -1,4 +1,4 @@
-const BASE = "";
+const API_BASE = import.meta.env.VITE_API_URL;
 
 function authHeaders(token) {
   return {
@@ -10,7 +10,7 @@ function authHeaders(token) {
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export async function googleLogin(googleToken) {
-  const res = await fetch(`${BASE}/auth/google`, {
+  const res = await fetch(`${API_BASE}/auth/google`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token: googleToken }),
@@ -22,13 +22,15 @@ export async function googleLogin(googleToken) {
 // ── Blogs ─────────────────────────────────────────────────────────────────────
 
 export async function getBlogs(token) {
-  const res = await fetch(`${BASE}/blogs/`, { headers: authHeaders(token) });
+  const res = await fetch(`${API_BASE}/blogs/`, {
+    headers: authHeaders(token),
+  });
   if (!res.ok) throw new Error("Failed to fetch blogs");
   return res.json();
 }
 
 export async function getBlog(token, blogId) {
-  const res = await fetch(`${BASE}/blogs/${blogId}`, {
+  const res = await fetch(`${API_BASE}/blogs/${blogId}`, {
     headers: authHeaders(token),
   });
   if (!res.ok) throw new Error("Blog not found");
@@ -36,7 +38,7 @@ export async function getBlog(token, blogId) {
 }
 
 export async function createBlog(token, { title, content_md }) {
-  const res = await fetch(`${BASE}/blogs/`, {
+  const res = await fetch(`${API_BASE}/blogs/`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify({ title, content_md }),
@@ -46,7 +48,7 @@ export async function createBlog(token, { title, content_md }) {
 }
 
 export async function deleteBlog(token, blogId) {
-  const res = await fetch(`${BASE}/blogs/${blogId}`, {
+  const res = await fetch(`${API_BASE}/blogs/${blogId}`, {
     method: "DELETE",
     headers: authHeaders(token),
   });
@@ -57,7 +59,7 @@ export async function deleteBlog(token, blogId) {
 // ── Chat ──────────────────────────────────────────────────────────────────────
 
 export async function chatWithBlog(token, { blog_id, question, api_key }) {
-  const res = await fetch(`${BASE}/chat/`, {
+  const res = await fetch(`${API_BASE}/chat/`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify({ blog_id, question, api_key }),
@@ -76,7 +78,7 @@ export async function chatWithBlog(token, { blog_id, question, api_key }) {
 export async function* streamGenerate(token, topic, apiKey) {
   console.log("🌐 Starting SSE connection to /generate/");
 
-  const res = await fetch(`${BASE}/generate/`, {
+  const res = await fetch(`${API_BASE}/generate/`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify({ topic, api_key: apiKey }),
