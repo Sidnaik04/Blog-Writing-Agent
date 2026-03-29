@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Request
-from sse_starlette.sse import EventSourceResponse
+from fastapi.responses import StreamingResponse
 import json
 import logging
 import sys
@@ -53,13 +53,8 @@ async def generate_blog(request: Request, user=Depends(get_current_user)):
             logger.debug("Graph built successfully")
             print("✅ Graph built successfully", flush=True)
 
-            # Send immediate feedback
-            yield {
-                "event": "log",
-                "data": json.dumps(
-                    {"status": "✅ Connected. Building graph..."}, default=str
-                ),
-            }
+            # Send immediate feedback as proper SSE
+            yield f"event: log\ndata: {json.dumps({'status': '✅ Connected. Building graph...'}, default=str)}\n\n"
 
             inputs = {
                 "topic": topic,
@@ -105,16 +100,13 @@ async def generate_blog(request: Request, user=Depends(get_current_user)):
                         print(msg, flush=True)
                         last_node = node_name
 
-                # Send progress update
+                # Send progress update as proper SSE string
                 update_json = json.dumps(step, default=str)
                 print(
                     f"📤 Sending update event #{update_count}, size: {len(update_json)} bytes",
                     flush=True,
                 )
-                yield {
-                    "event": "update",
-                    "data": update_json,
-                }
+                yield f"event: update\ndata: {update_json}\n\n"
                 logger.debug(f"  Update {update_count}: yielded to SSE")
 
             logger.info(f"✅ Graph completed. Total updates: {update_count}")
@@ -134,10 +126,7 @@ async def generate_blog(request: Request, user=Depends(get_current_user)):
                 final_md = json.dumps(final_state, default=str)
 
             logger.debug("📤 Sending final event...")
-            yield {
-                "event": "final",
-                "data": json.dumps({"final": final_md}, default=str),
-            }
+            yield f"event: final\ndata: {json.dumps({'final': final_md}, default=str)}\n\n"
 
             logger.info("✅ Generation completed successfully")
             print("✅ Successfully completed blog generation", flush=True)
@@ -146,18 +135,15 @@ async def generate_blog(request: Request, user=Depends(get_current_user)):
             error_msg = f"❌ ERROR in stream: {type(e).__name__}: {str(e)}"
             logger.error(error_msg, exc_info=True)
             print(error_msg, flush=True)
-            yield {
-                "event": "error",
-                "data": json.dumps({"error": error_msg}, default=str),
-            }
+            yield f"event: error\ndata: {json.dumps({'error': error_msg}, default=str)}\n\n"
 
-    # Return SSE response with proper headers
-    return EventSourceResponse(
+    # Return StreamingResponse with proper SSE headers
+    return StreamingResponse(
         event_generator(),
+        media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache, no-transform",
-            "Content-Type": "text/event-stream",
-            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         },
     )
