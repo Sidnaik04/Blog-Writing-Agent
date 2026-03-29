@@ -21,24 +21,32 @@ export default function Layout({ children }) {
     <div className="min-h-screen bg-surface flex flex-col">
       {/* Top nav */}
       <header className="border-b border-rule bg-surface sticky top-0 z-40">
-        <div className="max-w-5xl mx-auto px-5 h-13 flex items-center justify-between" style={{ height: "52px" }}>
+        <div
+          className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 h-13 flex items-center justify-between"
+          style={{ height: "52px" }}
+        >
           {/* Logo */}
-          <Link to="/generate" className="flex items-center gap-2 group">
-            <div className="w-7 h-7 bg-accent rounded-md flex items-center justify-center">
-              <IconPen size={13} className="text-white" />
+          <Link
+            to="/generate"
+            className="flex items-center gap-2 group flex-shrink-0"
+          >
+            <div className="w-6 sm:w-7 h-6 sm:h-7 bg-accent rounded-md flex items-center justify-center">
+              <IconPen size={12} className="text-white" />
             </div>
-            <span className="font-semibold text-ink text-sm tracking-tight">BlogAgent</span>
+            <span className="hidden sm:inline font-semibold text-ink text-sm tracking-tight">
+              BlogAgent
+            </span>
           </Link>
 
           {/* Nav links */}
-          <nav className="flex items-center gap-1">
+          <nav className="flex items-center gap-0.5 sm:gap-1">
             {navLinks.map(({ to, label }) => {
               const active = location.pathname.startsWith(to);
               return (
                 <Link
                   key={to}
                   to={to}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  className={`px-2 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-colors ${
                     active
                       ? "bg-surface-3 text-ink"
                       : "text-ink-3 hover:text-ink hover:bg-surface-2"
@@ -59,7 +67,9 @@ export default function Layout({ children }) {
                 className="w-7 h-7 rounded-full ring-1 ring-rule"
               />
             )}
-            <span className="text-sm text-ink-3 hidden sm:block">{user?.name}</span>
+            <span className="text-xs sm:text-sm text-ink-3 hidden md:block">
+              {user?.name}
+            </span>
             <button
               onClick={handleLogout}
               className="p-1.5 rounded-md text-ink-4 hover:text-ink hover:bg-surface-2 transition-colors"
@@ -72,7 +82,7 @@ export default function Layout({ children }) {
       </header>
 
       {/* Page content */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-5 py-8">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-4 md:px-6 py-6 sm:py-8">
         {children}
       </main>
     </div>

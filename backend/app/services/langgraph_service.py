@@ -118,13 +118,63 @@ class State(TypedDict):
 # 3) Lazy-loaded LLM Instance (initialized on first use)
 # ============================================================
 _llm_instance = None
+_current_api_key = None
+
+# Store the current API key context for use throughout the graph
+_current_graph_api_key = None
 
 
-def get_llm():
-    """Get or create the LLM instance (lazy initialization)."""
-    global _llm_instance
+def set_api_key_context(api_key: str = None):
+    """Set the API key to use for this graph execution."""
+    global _current_graph_api_key
+    _current_graph_api_key = api_key
+
+
+def get_context_api_key():
+    """Get the current API key context."""
+    global _current_graph_api_key
+    return _current_graph_api_key
+
+
+
+def get_llm(api_key: str = None):
+    """Get or create the LLM instance (lazy initialization).
+    
+    Uses the current API key context if set, otherwise uses provided api_key,
+    then falls back to environment variable.
+    """
+    global _llm_instance, _current_api_key, _current_graph_api_key
+    
+    # Determine which API key to use (in order of precedence)
+    api_key_to_use = api_key or _current_graph_api_key or os.getenv("GOOGLE_API_KEY")
+    
+    # If API key changed since last instance, create new instance
+    if api_key_to_use != _current_api_key:
+        _current_api_key = api_key_to_use
+        if api_key_to_use:
+            _llm_instance = ChatGoogleGenerativeAI(
+                model="gemini-2.5-flash",
+                api_key=api_key_to_use
+            )
+        else:
+            # Create instance without explicit API key (will use GOOGLE_API_KEY env var)
+            _llm_instance = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
+    
+    return _llm_instance
+
+    # If no API key provided, use cached instance or create default one
     if _llm_instance is None:
-        _llm_instance = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
+        # Try to get API key from environment or use the provided one
+        env_api_key = os.getenv("GOOGLE_API_KEY")
+        if env_api_key:
+            _current_api_key = env_api_key
+            _llm_instance = ChatGoogleGenerativeAI(
+                model="gemini-2.5-flash", api_key=env_api_key
+            )
+        else:
+            # Create instance without explicit API key (will use GOOGLE_API_KEY env var)
+            _llm_instance = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
+
     return _llm_instance
 
 
@@ -146,8 +196,8 @@ If needs_research=true:
 """
 
 
-def router_node(state: State) -> dict:
-    decider = get_llm().with_structured_output(RouterDecision)
+def router_node(state: State, api_key: str = None) -> dict:
+    decider = get_llm(api_key).with_structured_output(RouterDecision)
     decision = decider.invoke(
         [
             SystemMessage(content=ROUTER_SYSTEM),
@@ -569,9 +619,11 @@ def build_graph(api_key: str = None):
     """Build and return the compiled graph.
 
     Args:
-        api_key: Deprecated. Now uses environment variables for LLM config.
-                Models use GOOGLE_API_KEY from environment.
+        api_key: Optional Google Gemini API key. If provided, will be used instead of
+                environment variable. If not provided, uses GOOGLE_API_KEY from environment.
     """
+    # Set the API key context for this graph execution
+    set_api_key_context(api_key)
     # -- Reducer subgraph --
     reducer_graph = StateGraph(State)
     reducer_graph.add_node("merge_content", merge_content)
@@ -584,6 +636,7 @@ def build_graph(api_key: str = None):
     reducer_subgraph = reducer_graph.compile()
 
     # -- Main graph --
+
     g = StateGraph(State)
     g.add_node("router", router_node)
     g.add_node("research", research_node)

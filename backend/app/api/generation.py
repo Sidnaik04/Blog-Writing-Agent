@@ -3,6 +3,7 @@ from sse_starlette.sse import EventSourceResponse
 import json
 import logging
 import sys
+import os
 from datetime import date
 
 from app.api.deps import get_current_user
@@ -26,6 +27,13 @@ router = APIRouter(prefix="/generate", tags=["Generation"])
 async def generate_blog(request: Request, user=Depends(get_current_user)):
     body = await request.json()
     topic = body.get("topic")
+    api_key = body.get(
+        "api_key", ""
+    ).strip()  # Get API key from request, default to empty
+
+    # If no API key provided, use the developer's API key from environment
+    if not api_key:
+        api_key = os.getenv("GOOGLE_API_KEY", "")
 
     msg = f"🚀 Generate request received. User: {user}. Topic: {topic[:50] if topic else 'EMPTY'}..."
     logger.info(msg)
@@ -40,7 +48,7 @@ async def generate_blog(request: Request, user=Depends(get_current_user)):
             logger.debug("Building LangGraph...")
             print("Building LangGraph...", flush=True)
 
-            graph = build_graph()
+            graph = build_graph(api_key=api_key)
 
             logger.debug("Graph built successfully")
             print("✅ Graph built successfully", flush=True)

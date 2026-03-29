@@ -31,11 +31,34 @@ export default {
         "fade-in": "fadeIn 0.3s ease both",
         "slide-up": "slideUp 0.35s ease both",
         "pulse-dot": "pulseDot 1.4s ease-in-out infinite",
+        pulse: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        bounce: "bounce 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite",
+        shimmer: "shimmer 2s infinite",
+        "slide-in-right": "slideInRight 0.4s ease-out",
       },
       keyframes: {
         fadeIn: { from: { opacity: 0 }, to: { opacity: 1 } },
-        slideUp: { from: { opacity: 0, transform: "translateY(10px)" }, to: { opacity: 1, transform: "translateY(0)" } },
-        pulseDot: { "0%, 100%": { opacity: 0.3, transform: "scale(0.8)" }, "50%": { opacity: 1, transform: "scale(1)" } },
+        slideUp: {
+          from: { opacity: 0, transform: "translateY(10px)" },
+          to: { opacity: 1, transform: "translateY(0)" },
+        },
+        pulseDot: {
+          "0%, 100%": { opacity: 0.3, transform: "scale(0.8)" },
+          "50%": { opacity: 1, transform: "scale(1)" },
+        },
+        pulse: { "0%, 100%": { opacity: 1 }, "50%": { opacity: 0.5 } },
+        bounce: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-10px)" },
+        },
+        shimmer: {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(200%)" },
+        },
+        slideInRight: {
+          from: { opacity: 0, transform: "translateX(-20px)" },
+          to: { opacity: 1, transform: "translateX(0)" },
+        },
       },
     },
   },

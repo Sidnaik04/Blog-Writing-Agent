@@ -15,6 +15,7 @@ import {
   IconCopy,
   IconCheck,
 } from "../components/ui";
+import DownloadDropdown from "../components/DownloadDropdown";
 import Layout from "../components/Layout";
 
 export default function BlogDetailPage() {
@@ -176,14 +177,20 @@ export default function BlogDetailPage() {
               </button>
             ))}
           </div>
-          <Button variant="ghost" size="sm" onClick={handleCopy}>
-            {copied ? (
-              <IconCheck size={13} className="text-accent" />
-            ) : (
-              <IconCopy size={13} />
-            )}
-            {copied ? "Copied" : "Copy"}
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={handleCopy}>
+              {copied ? (
+                <IconCheck size={13} className="text-accent" />
+              ) : (
+                <IconCopy size={13} />
+              )}
+              {copied ? "Copied" : "Copy"}
+            </Button>
+            <DownloadDropdown
+              content={blog.content_md}
+              title={blog.title}
+            />
+          </div>
         </div>
 
         {/* Blog content */}

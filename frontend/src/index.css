@@ -192,3 +192,76 @@
 .glow-active {
   animation: glowPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* ── Download Dropdown ─────────────────────────────────────────── */
+.download-dropdown {
+  position: relative;
+  display: inline-flex;
+}
+
+.download-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 50;
+  min-width: 180px;
+  background: #ffffff;
+  border: 1px solid #e8e3db;
+  border-radius: 10px;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.08),
+    0 1px 4px rgba(0, 0, 0, 0.04);
+  padding: 4px;
+  animation: dropdownFadeIn 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.download-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 7px;
+  transition: background-color 0.12s ease;
+  text-align: left;
+}
+
+.download-dropdown-item:hover {
+  background-color: #f4f3ee;
+}
+
+.download-dropdown-item:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.download-dropdown-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.download-dropdown-item-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1a1814;
+}
+
+.download-dropdown-item-desc {
+  font-size: 11px;
+  color: #9b958c;
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

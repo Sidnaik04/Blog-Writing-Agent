@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ChevronRight, CheckCircle2, Save } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { streamGenerate, createBlog } from "../services/api";
 import AgentPipeline, { guessStepFromData } from "../components/AgentPipeline";
@@ -11,10 +12,10 @@ import {
   IconKey,
   IconCopy,
   IconCheck,
-  IconDownload,
   IconPen,
   IconArrow,
 } from "../components/ui";
+import DownloadDropdown from "../components/DownloadDropdown";
 import Layout from "../components/Layout";
 
 const PHASES = {
@@ -23,6 +24,8 @@ const PHASES = {
   done: "done",
   error: "error",
 };
+
+const TOTAL_STEPS = 5;
 
 function extractFinalContent(finalData) {
   if (!finalData) return "";
@@ -51,6 +54,14 @@ export default function GeneratePage() {
   const [localApiKey, setLocalApiKey] = useState(apiKey);
   const [showApiKey, setShowApiKey] = useState(!apiKey);
 
+  // Free generations tracking
+  const [remainingFreeGenerations, setRemainingFreeGenerations] = useState(
+    () => {
+      const stored = localStorage.getItem("remainingFreeGenerations");
+      return stored !== null ? parseInt(stored) : 3;
+    },
+  );
+
   const [phase, setPhase] = useState(PHASES.idle);
   const [stepKeys, setStepKeys] = useState([]);
   const [activeStep, setActiveStep] = useState(null);
@@ -69,10 +80,9 @@ export default function GeneratePage() {
 
   const abortRef = useRef(false);
   const startTimeRef = useRef(null);
-  const previousStepRef = useRef(null);
 
-  // Calculate estimated remaining time (assuming ~240 seconds total)
-  const estimatedTotalSeconds = 240;
+  // Step order for tracking
+  const estimatedTotalSeconds = 300;
   const estimatedRemaining = Math.max(
     0,
     estimatedTotalSeconds - elapsedSeconds,
@@ -80,28 +90,32 @@ export default function GeneratePage() {
   const remainingMinutes = Math.floor(estimatedRemaining / 60);
   const remainingSeconds = estimatedRemaining % 60;
 
-  // When activeStep changes, mark the previous step as completed
-  useEffect(() => {
-    if (phase === PHASES.running && activeStep) {
-      if (previousStepRef.current && previousStepRef.current !== activeStep) {
-        // New step started, mark previous as completed
-        const prevStep = previousStepRef.current;
-        setCompletedSteps((prev) =>
-          prev.includes(prevStep) ? prev : [...prev, prevStep],
-        );
-      }
-      previousStepRef.current = activeStep;
-    }
-  }, [activeStep, phase]);
-
   const handleGenerate = async () => {
     if (!topic.trim()) return;
-    if (!localApiKey.trim()) {
+
+    // Check if user has provided an API key
+    const hasApiKey = localApiKey.trim();
+
+    // If no API key and no free generations left, force user to provide one
+    if (!hasApiKey && remainingFreeGenerations <= 0) {
       setShowApiKey(true);
+      alert(
+        "You've used all 3 free generations. Please provide your own Google Gemini API key to continue.",
+      );
       return;
     }
 
-    setApiKey(localApiKey.trim());
+    // If no API key but has free generations, use developer's key
+    if (!hasApiKey && remainingFreeGenerations > 0) {
+      // Decrement free generations
+      const newRemaining = remainingFreeGenerations - 1;
+      setRemainingFreeGenerations(newRemaining);
+      localStorage.setItem("remainingFreeGenerations", newRemaining.toString());
+    } else if (hasApiKey) {
+      // User provided their own key, save it
+      setApiKey(localApiKey.trim());
+    }
+
     abortRef.current = false;
     setPhase(PHASES.running);
     setStepKeys([]);
@@ -115,10 +129,12 @@ export default function GeneratePage() {
     try {
       console.log("🔄 Starting stream... about to enter for-await loop");
 
+      // Use user's API key if provided, otherwise backend will use developer's key
+      const apiKeyToUse = localApiKey.trim() || "";
       for await (const { event, data } of streamGenerate(
         token,
         topic.trim(),
-        localApiKey.trim(),
+        apiKeyToUse,
       )) {
         console.log("📡 Raw event received:", {
           event,
@@ -174,7 +190,6 @@ export default function GeneratePage() {
           }
 
           setActiveStep(null);
-          previousStepRef.current = null;
           if (content && content.trim().length > 0) {
             try {
               const title = extractTitle(content, finalTopic);
@@ -220,16 +235,6 @@ export default function GeneratePage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownload = () => {
-    const blob = new Blob([finalContent], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${finalTopic.slice(0, 50).replace(/\s+/g, "-").toLowerCase()}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const handleSave = async () => {
     setSaving(true);
     setSaveError("");
@@ -255,7 +260,6 @@ export default function GeneratePage() {
     setStepKeys([]);
     setActiveStep(null);
     setCompletedSteps([]);
-    previousStepRef.current = null;
     startTimeRef.current = null;
   };
 
@@ -280,18 +284,48 @@ export default function GeneratePage() {
 
   return (
     <Layout>
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-4xl mx-auto w-full">
         {/* ── Idle: input form ── */}
         {phase === PHASES.idle && (
-          <div className="animate-slide-up space-y-6">
+          <div className="animate-fade-in space-y-6">
             <div>
-              <h1 className="font-serif text-2xl text-ink mb-1">
+              <h1 className="font-serif text-xl sm:text-2xl text-ink mb-1">
                 Generate a Blog
               </h1>
-              <p className="text-sm text-ink-3">
+              <p className="text-xs sm:text-sm text-ink-3">
                 Describe a topic and your AI agent pipeline will plan, write,
                 and edit it.
               </p>
+            </div>
+
+            {/* Free Generations Counter */}
+            <div className="px-4 py-3 bg-gradient-to-br from-accent/10 to-accent-light/10 rounded-lg border border-accent/30">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-ink-3 uppercase tracking-wide mb-1">
+                    Free Generations Remaining
+                  </p>
+                  <p className="text-2xl font-bold text-accent">
+                    {remainingFreeGenerations}/3
+                  </p>
+                </div>
+                <div className="text-xs text-ink-3 max-w-xs">
+                  {remainingFreeGenerations > 0 ? (
+                    <p>
+                      You have{" "}
+                      <span className="font-semibold text-accent">
+                        {remainingFreeGenerations}
+                      </span>{" "}
+                      free generations left using our API key
+                    </p>
+                  ) : (
+                    <p className="text-red-600 font-semibold">
+                      No free generations left. Please add your own API key to
+                      continue.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* API Key */}
@@ -300,13 +334,13 @@ export default function GeneratePage() {
                 <label className="text-xs font-medium text-ink-3 uppercase tracking-wide flex items-center gap-1.5">
                   <IconKey size={13} /> Google Gemini API Key
                 </label>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="password"
                     value={localApiKey}
                     onChange={(e) => setLocalApiKey(e.target.value)}
                     placeholder="AIza..."
-                    className="flex-1 border border-rule rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent font-mono"
+                    className="flex-1 border border-rule rounded-lg px-3 py-2 text-xs sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent font-mono"
                   />
                   <Button
                     variant="secondary"
@@ -315,6 +349,7 @@ export default function GeneratePage() {
                       setShowApiKey(false);
                     }}
                     disabled={!localApiKey.trim()}
+                    size="sm"
                   >
                     Save
                   </Button>
@@ -323,15 +358,26 @@ export default function GeneratePage() {
                   Stored in your browser only, never sent to our servers.
                 </p>
               </div>
-            ) : (
+            ) : remainingFreeGenerations > 0 ? (
               <div className="flex items-center gap-2 text-sm text-ink-3">
                 <IconKey size={13} />
-                <span>API key saved</span>
+                <span>Using free generations</span>
                 <button
                   onClick={() => setShowApiKey(true)}
                   className="text-accent hover:underline text-xs"
                 >
-                  change
+                  add own key
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-red-600">
+                <IconKey size={13} />
+                <span>API key required</span>
+                <button
+                  onClick={() => setShowApiKey(true)}
+                  className="text-accent hover:underline text-xs font-semibold"
+                >
+                  add your key
                 </button>
               </div>
             )}
@@ -349,15 +395,18 @@ export default function GeneratePage() {
                     handleGenerate();
                 }}
                 placeholder="e.g. The rise of AI agents in software development…"
-                rows={4}
-                className="w-full border border-rule rounded-lg px-3.5 py-3 text-sm bg-white text-ink placeholder-ink-4 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent resize-none leading-relaxed"
+                rows={3}
+                className="w-full border border-rule rounded-lg px-3 py-2 text-xs sm:text-sm bg-white text-ink placeholder-ink-4 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent resize-none leading-relaxed"
               />
-              <p className="text-xs text-ink-4">⌘ + Enter to generate</p>
+              <p className="text-xs text-ink-4">Press Cmd+Enter to generate</p>
             </div>
 
             <Button
               onClick={handleGenerate}
-              disabled={!topic.trim() || !localApiKey.trim()}
+              disabled={
+                !topic.trim() ||
+                (remainingFreeGenerations <= 0 && !localApiKey.trim())
+              }
               size="lg"
               className="w-full"
             >
@@ -371,10 +420,10 @@ export default function GeneratePage() {
         {phase === PHASES.running && (
           <div className="animate-fade-in space-y-8">
             {/* Header with elapsed time */}
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-3">
+                  <div className="flex items-center gap-3">
                     <div className="relative">
                       <Spinner size={20} className="text-accent" />
                     </div>
@@ -389,22 +438,21 @@ export default function GeneratePage() {
               </div>
 
               {/* Timer display */}
-              <div className="flex items-center gap-6 px-5 py-4 bg-gradient-to-r from-accent/5 to-accent-light/5 rounded-xl border border-accent/20">
-                <div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="px-4 py-3 bg-gradient-to-br from-accent/5 to-accent-light/5 rounded-lg border border-accent/20">
                   <p className="text-xs font-semibold text-ink-3 uppercase tracking-wider mb-1">
                     Elapsed Time
                   </p>
-                  <p className="font-mono font-bold text-accent text-xl">
+                  <p className="font-mono font-bold text-accent text-lg">
                     {Math.floor(elapsedSeconds / 60)}m{" "}
                     {String(elapsedSeconds % 60).padStart(2, "0")}s
                   </p>
                 </div>
-                <div className="h-12 w-px bg-rule/20" />
-                <div>
+                <div className="px-4 py-3 bg-gradient-to-br from-ink-4/5 to-ink-3/5 rounded-lg border border-ink-2/20">
                   <p className="text-xs font-semibold text-ink-3 uppercase tracking-wider mb-1">
                     Est. Remaining
                   </p>
-                  <p className="font-mono font-bold text-ink-2 text-xl">
+                  <p className="font-mono font-bold text-ink text-lg">
                     ~{remainingMinutes}m{" "}
                     {String(remainingSeconds).padStart(2, "0")}s
                   </p>
@@ -414,7 +462,7 @@ export default function GeneratePage() {
 
             <AgentPipeline
               steps={stepKeys}
-              activeStep={activeStep}
+              activeStep={activeStep ? `Step: ${activeStep}` : ""}
               completedSteps={completedSteps}
               errorStep={errorStep}
             />
@@ -497,20 +545,13 @@ export default function GeneratePage() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#2d5a27"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+                  <CheckCircle2
+                    size={16}
+                    className="text-accent"
+                    strokeWidth={2}
+                  />
                   <span className="text-sm text-accent font-medium">
-                    Generated
+                    Generated Successfully
                   </span>
                 </div>
                 <h2 className="font-serif text-xl text-ink leading-snug">
@@ -551,10 +592,7 @@ export default function GeneratePage() {
                   )}
                   {copied ? "Copied" : "Copy"}
                 </Button>
-                <Button variant="ghost" size="sm" onClick={handleDownload}>
-                  <IconDownload size={13} />
-                  .md
-                </Button>
+                <DownloadDropdown content={finalContent} title={finalTopic} />
               </div>
             </div>
 
@@ -580,18 +618,11 @@ export default function GeneratePage() {
               {saved ? (
                 <div className="flex items-center gap-3">
                   <div className="flex-1 flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg p-3">
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#2d5a27"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
+                    <CheckCircle2
+                      size={16}
+                      className="text-accent flex-shrink-0"
+                      strokeWidth={2.5}
+                    />
                     <span className="text-sm font-medium text-green-700">
                       Blog saved! Download or view in My Blogs.
                     </span>
@@ -604,25 +635,8 @@ export default function GeneratePage() {
                   size="lg"
                   className="w-full"
                 >
-                  {saving ? (
-                    <Spinner size={15} />
-                  ) : (
-                    <svg
-                      width="15"
-                      height="15"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                      <polyline points="17 21 17 13 7 13 7 21" />
-                      <polyline points="7 3 7 8 15 8" />
-                    </svg>
-                  )}
-                  {saving ? "Saving…" : "Save to My Blogs"}
+                  {saving ? <Spinner size={15} /> : <Save size={15} />}
+                  {saving ? "Saving..." : "Save to My Blogs"}
                 </Button>
               )}
               {saved && (

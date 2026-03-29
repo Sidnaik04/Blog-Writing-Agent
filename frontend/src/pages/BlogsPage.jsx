@@ -10,8 +10,8 @@ import {
   IconArrow,
   IconPen,
   IconCopy,
-  IconDownload,
 } from "../components/ui";
+import DownloadDropdown from "../components/DownloadDropdown";
 import Layout from "../components/Layout";
 
 function timeAgo(dateStr) {
@@ -70,17 +70,7 @@ export default function BlogsPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownload = (e, title, content) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const blob = new Blob([content], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${title.slice(0, 50).replace(/\s+/g, "-").toLowerCase()}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+
 
   return (
     <Layout>
@@ -173,15 +163,12 @@ export default function BlogsPage() {
                     >
                       <IconCopy size={13} />
                     </button>
-                    <button
-                      onClick={(e) =>
-                        handleDownload(e, blog.title, blog.content_md)
-                      }
-                      className="p-1.5 rounded-md text-ink-4 hover:text-accent hover:bg-surface-2 transition-colors opacity-0 group-hover:opacity-100"
-                      title="Download"
-                    >
-                      <IconDownload size={13} />
-                    </button>
+                    <DownloadDropdown
+                      content={blog.content_md}
+                      title={blog.title}
+                      variant="icon"
+                      stopPropagation
+                    />
                     <button
                       onClick={(e) => handleDelete(e, blog.id)}
                       className="p-1.5 rounded-md text-ink-4 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
