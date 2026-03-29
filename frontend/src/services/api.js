@@ -68,30 +68,55 @@ export async function chatWithBlog(token, { blog_id, question, api_key }) {
   return res.json(); // { answer: string }
 }
 
-// ── Generation (SSE) ──────────────────────────────────────────────────────────
-// Returns an EventSource-like async generator.
+// ── Generation (Job-based with SSE streaming) ────────────────────────────────
+// Two-step process:
+// 1. POST /generate/ returns { job_id }
+// 2. GET /stream/{job_id} streams SSE events
+//
+// Returns an async generator.
 // Usage:
 //   for await (const event of streamGenerate(token, topic, apiKey)) { ... }
 //
-// Each yielded value: { event: "update"|"final"|"error", data: any }
+// Each yielded value: { event: "update"|"final"|"error"|"log", data: any }
 
 export async function* streamGenerate(token, topic, apiKey) {
-  console.log("🌐 Starting SSE connection to /generate/");
+  console.log("🚀 Starting blog generation (job-based)...");
 
-  const res = await fetch(`${API_BASE}/generate/`, {
+  // Step 1: Create job and get job_id
+  const createRes = await fetch(`${API_BASE}/generate/`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify({ topic, api_key: apiKey }),
   });
 
-  if (!res.ok) {
-    console.error("❌ HTTP error:", res.status, res.statusText);
-    throw new Error(`Generation failed: ${res.status}`);
+  if (!createRes.ok) {
+    console.error("❌ HTTP error:", createRes.status, createRes.statusText);
+    throw new Error(`Failed to create job: ${createRes.status}`);
   }
 
-  console.log("✅ HTTP 200 received, starting to read stream...");
+  const jobData = await createRes.json();
+  const jobId = jobData.job_id;
 
-  const reader = res.body.getReader();
+  console.log(`✅ Job created: ${jobId}. Connecting to stream...`);
+
+  // Step 2: Stream events from the job
+  const streamRes = await fetch(`${API_BASE}/generate/stream/${jobId}`, {
+    method: "GET",
+    headers: authHeaders(token),
+  });
+
+  if (!streamRes.ok) {
+    console.error(
+      "❌ Stream HTTP error:",
+      streamRes.status,
+      streamRes.statusText,
+    );
+    throw new Error(`Stream connection failed: ${streamRes.status}`);
+  }
+
+  console.log("✅ Stream connected, reading events...");
+
+  const reader = streamRes.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let eventCount = 0;
