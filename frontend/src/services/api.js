@@ -43,7 +43,14 @@ export async function createBlog(token, { title, content_md }) {
     headers: authHeaders(token),
     body: JSON.stringify({ title, content_md }),
   });
-  if (!res.ok) throw new Error("Failed to save blog");
+  if (!res.ok) {
+    const errorData = await res
+      .json()
+      .catch(() => ({ detail: "Unknown error" }));
+    const detail = errorData.detail || res.statusText;
+    console.error(`❌ HTTP ${res.status} when creating blog:`, detail);
+    throw new Error(`Failed to save blog: ${res.status} - ${detail}`);
+  }
   return res.json();
 }
 

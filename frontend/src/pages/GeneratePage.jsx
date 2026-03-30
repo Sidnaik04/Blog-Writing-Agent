@@ -194,6 +194,7 @@ export default function GeneratePage() {
             try {
               const title = extractTitle(content, finalTopic);
               setSaving(true);
+              setSaveError("");
               createBlog(token, { title, content_md: content })
                 .then((blog) => {
                   console.log("✅ Blog auto-saved:", blog.id);
@@ -201,21 +202,28 @@ export default function GeneratePage() {
                   setSaved(true);
                 })
                 .catch((err) => {
-                  console.error("❌ Auto-save failed:", err.message);
-                  setSaveError(err.message);
+                  const errorMsg = err.message || "Failed to save blog";
+                  console.error("❌ Auto-save failed:", errorMsg);
+                  console.error("Error details:", err);
+                  setSaveError(errorMsg);
                   setSaving(false);
+                  // Don't block generation - let user see content and retry save
                 });
             } catch (err) {
               console.error("❌ Error during auto-save:", err);
-              setSaveError(err.message);
+              setSaveError(err.message || "Error preparing blog for save");
             }
           }
         }
 
         if (event === "error") {
-          const msg = typeof data === "string" ? data : JSON.stringify(data);
+          const msg =
+            typeof data === "string"
+              ? data
+              : data?.error || JSON.stringify(data);
           setErrorStep(activeStep);
           setPhase(PHASES.error);
+          console.error("🔴 Generation error:", msg);
           setStreamLog((prev) => [...prev, { event: "error", message: msg }]);
         }
       }

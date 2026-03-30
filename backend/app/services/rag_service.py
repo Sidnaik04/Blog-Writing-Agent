@@ -1,3 +1,4 @@
+import os
 import chromadb
 from chromadb.utils import embedding_functions
 
@@ -7,7 +8,12 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 # CHROMA CLIENT
 # ===============================
 
-chroma_client = chromadb.Client()
+# Use persistent ChromaDB for production deployments (e.g., Render)
+# This ensures RAG data persists across server restarts
+chroma_dir = os.getenv("CHROMA_DB_DIR", "/tmp/chroma_db")
+os.makedirs(chroma_dir, exist_ok=True)
+
+chroma_client = chromadb.PersistentClient(path=chroma_dir)
 
 collection = chroma_client.get_or_create_collection(name="blogs")
 
