@@ -303,16 +303,13 @@ export async function* streamGenerate(token, topic, apiKey) {
         }
 
         eventCount++;
-        console.log(
-          `Event #${eventCount}: ${eventType} (from final buffer)`,
-          {
-            dataType: typeof parsed,
-            preview:
-              typeof parsed === "object"
-                ? JSON.stringify(parsed).substring(0, 150)
-                : String(parsed).substring(0, 150),
-          },
-        );
+        console.log(`Event #${eventCount}: ${eventType} (from final buffer)`, {
+          dataType: typeof parsed,
+          preview:
+            typeof parsed === "object"
+              ? JSON.stringify(parsed).substring(0, 150)
+              : String(parsed).substring(0, 150),
+        });
 
         yield { event: eventType, data: parsed };
 
@@ -326,9 +323,7 @@ export async function* streamGenerate(token, topic, apiKey) {
       }
     }
 
-    console.log(
-      `Stream ended normally. Total events processed: ${eventCount}`,
-    );
+    console.log(`Stream ended normally. Total events processed: ${eventCount}`);
 
     if (eventCount === 0) {
       console.warn(
