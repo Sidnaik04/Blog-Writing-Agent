@@ -6,7 +6,7 @@ from app.api.deps import get_current_user
 from app.models.blog import Blog
 from app.schemas.blog import BlogCreate, BlogResponse
 from app.models.user import User
-from app.services.rag_service import store_blog
+from app.services.rag_service import store_blog, get_collection_stats
 
 router = APIRouter(prefix="/blogs", tags=["Blogs"])
 
@@ -19,7 +19,7 @@ def create_blog(
     user: User = Depends(get_current_user),
 ):
     try:
-        print(f"\n📝 Creating blog for user {user.id}")
+        print(f"\nCreating blog for user {user.id}")
         print(f"   Title: {blog.title[:50]}...")
         print(f"   Content length: {len(blog.content_md)} chars")
 
@@ -30,14 +30,14 @@ def create_blog(
         db.commit()
         db.refresh(new_blog)
 
-        print(f"✅ Blog created with ID: {new_blog.id}")
+        print(f"Blog created with ID: {new_blog.id}")
 
         # Then store in RAG system (ChromaDB) - don't fail if this fails
         try:
             store_blog(new_blog.id, new_blog.content_md)
-            print(f"✅ Stored in RAG system (ID: {new_blog.id})")
+            print(f"Stored in RAG system (ID: {new_blog.id})")
         except Exception as rag_error:
-            print(f"⚠️ Warning: Failed to store blog in RAG system: {rag_error}")
+            print(f"Warning: Failed to store blog in RAG system: {rag_error}")
             # Don't fail the whole request if RAG fails
 
         return new_blog
@@ -46,7 +46,7 @@ def create_blog(
         # Rollback on any error
         db.rollback()
         error_msg = f"Failed to create blog: {str(db_error)}"
-        print(f"❌ {error_msg}")
+        print(f"{error_msg}")
         print(f"   Error type: {type(db_error).__name__}")
         import traceback
 
@@ -88,3 +88,18 @@ def delete_blog(
     db.commit()
 
     return {"message": "Blog deleted successfully"}
+
+
+# RAG Health Check (for debugging)
+@router.get("/health/rag")
+def rag_health_check():
+    """Check if the RAG system (ChromaDB) is working and has data."""
+    stats = get_collection_stats()
+    return {
+        "rag_status": stats,
+        "message": (
+            f"RAG collection has {stats.get('total_documents', 0)} documents"
+            if stats.get("status") == "ok"
+            else "RAG system error"
+        ),
+    }

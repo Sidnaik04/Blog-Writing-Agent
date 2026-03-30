@@ -5,28 +5,46 @@ from app.services.rag_service import retrieve_context
 
 
 def chat_with_blog(api_key: str, blog_id: int, question: str):
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
-        google_api_key=api_key
-    )
+    """Chat with blog content using RAG retrieval + LLM."""
+    try:
+        print(f"Chat request: blog_id={blog_id}, question='{question[:60]}...'")
 
-    context = retrieve_context(question, blog_id)
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key)
 
-    prompt = f"""
-You are answering based ONLY on the blog content.
+        context = retrieve_context(question, blog_id)
 
-Context:
+        # Check if context was retrieved
+        if not context or context.strip() == "":
+            print(f"No context retrieved for blog {blog_id}")
+            return "I'm sorry, but I couldn't find the blog content. The blog may not have been indexed yet. Please try again in a moment, or regenerate the blog."
+
+        prompt = f"""You are answering questions based ONLY on the provided blog content.
+
+Blog Content:
 {context}
 
-Question:
+Question from user:
 {question}
 
-Answer clearly.
-"""
+Answer the question clearly and accurately based only on the blog content above. If the answer is not in the blog content, say so."""
 
-    response = llm.invoke([
-        SystemMessage(content="You are a helpful assistant"),
-        HumanMessage(content=prompt)
-    ])
+        response = llm.invoke(
+            [
+                SystemMessage(
+                    content="You are a helpful assistant that answers questions based on blog content."
+                ),
+                HumanMessage(content=prompt),
+            ]
+        )
 
-    return response.content
+        answer = response.content
+        print(f"Chat response generated ({len(answer)} chars)")
+        return answer
+
+    except Exception as e:
+        error_msg = f"Error in chat: {str(e)}"
+        print(f"{error_msg}")
+        import traceback
+
+        traceback.print_exc()
+        return f"An error occurred while processing your question: {str(e)}"

@@ -127,7 +127,7 @@ export default function GeneratePage() {
     setFinalTopic(topic.trim());
 
     try {
-      console.log("🔄 Starting stream... about to enter for-await loop");
+      console.log("Starting stream... about to enter for-await loop");
 
       // Use user's API key if provided, otherwise backend will use developer's key
       const apiKeyToUse = localApiKey.trim() || "";
@@ -136,7 +136,7 @@ export default function GeneratePage() {
         topic.trim(),
         apiKeyToUse,
       )) {
-        console.log("📡 Raw event received:", {
+        console.log("Raw event received:", {
           event,
           dataType: typeof data,
           dataKeys: typeof data === "object" ? Object.keys(data) : "not-object",
@@ -166,12 +166,12 @@ export default function GeneratePage() {
             setActiveStep(stepKey);
           }
         } else if (event === "log") {
-          console.log("📝 Log event from backend:", data);
+          console.log("Log event from backend:", data);
         }
 
         if (event === "final") {
           const content = extractFinalContent(data);
-          console.log("🎉 Final content received:", {
+          console.log("Final content received:", {
             dataKeys:
               typeof data === "object" ? Object.keys(data) : "not-object",
             contentLength: content.length,
@@ -179,7 +179,7 @@ export default function GeneratePage() {
           });
           setFinalContent(content);
 
-          // ✅ CRITICAL: Set phase to done immediately when final content arrives
+          // CRITICAL: Set phase to done immediately when final content arrives
           setPhase(PHASES.done);
 
           // Mark the last active step as completed
@@ -197,20 +197,20 @@ export default function GeneratePage() {
               setSaveError("");
               createBlog(token, { title, content_md: content })
                 .then((blog) => {
-                  console.log("✅ Blog auto-saved:", blog.id);
+                  console.log("Blog auto-saved:", blog.id);
                   setSaving(false);
                   setSaved(true);
                 })
                 .catch((err) => {
                   const errorMsg = err.message || "Failed to save blog";
-                  console.error("❌ Auto-save failed:", errorMsg);
+                  console.error("Auto-save failed:", errorMsg);
                   console.error("Error details:", err);
                   setSaveError(errorMsg);
                   setSaving(false);
                   // Don't block generation - let user see content and retry save
                 });
             } catch (err) {
-              console.error("❌ Error during auto-save:", err);
+              console.error("Error during auto-save:", err);
               setSaveError(err.message || "Error preparing blog for save");
             }
           }
@@ -228,7 +228,7 @@ export default function GeneratePage() {
         }
       }
     } catch (err) {
-      console.error("❌ Error in for-await loop:", err.message, err);
+      console.error("Error in for-await loop:", err.message, err);
       setPhase(PHASES.error);
       setStreamLog((prev) => [
         ...prev,

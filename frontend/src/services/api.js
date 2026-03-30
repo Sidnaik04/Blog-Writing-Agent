@@ -48,7 +48,7 @@ export async function createBlog(token, { title, content_md }) {
       .json()
       .catch(() => ({ detail: "Unknown error" }));
     const detail = errorData.detail || res.statusText;
-    console.error(`❌ HTTP ${res.status} when creating blog:`, detail);
+    console.error(`HTTP ${res.status} when creating blog:`, detail);
     throw new Error(`Failed to save blog: ${res.status} - ${detail}`);
   }
   return res.json();
@@ -93,13 +93,13 @@ export async function chatWithBlog(token, { blog_id, question, api_key }) {
 //   - "error": Error occurred during generation
 
 export async function* streamGenerate(token, topic, apiKey) {
-  console.log("🚀 Starting blog generation (job-based architecture)...");
+  console.log("Starting blog generation (job-based architecture)");
 
   let jobId = null;
 
   try {
     // Step 1: Create job and get job_id
-    console.log("📝 Step 1: Creating generation job...");
+    console.log("Step 1: Creating generation job...");
     const createRes = await fetch(`${API_BASE}/generate/`, {
       method: "POST",
       headers: authHeaders(token),
@@ -108,7 +108,7 @@ export async function* streamGenerate(token, topic, apiKey) {
 
     if (!createRes.ok) {
       console.error(
-        "❌ HTTP error creating job:",
+        "HTTP error creating job:",
         createRes.status,
         createRes.statusText,
       );
@@ -124,8 +124,8 @@ export async function* streamGenerate(token, topic, apiKey) {
       throw new Error("Server did not return a job_id");
     }
 
-    console.log(`✅ Job created: ${jobId}`);
-    console.log(`📡 Step 2: Connecting to stream...`);
+    console.log(`Job created: ${jobId}`);
+    console.log(`Step 2: Connecting to stream...`);
 
     // Step 2: Stream events from the job
     const streamRes = await fetch(`${API_BASE}/generate/stream/${jobId}`, {
@@ -135,7 +135,7 @@ export async function* streamGenerate(token, topic, apiKey) {
 
     if (!streamRes.ok) {
       console.error(
-        "❌ Stream HTTP error:",
+        "Stream HTTP error:",
         streamRes.status,
         streamRes.statusText,
       );
@@ -148,7 +148,7 @@ export async function* streamGenerate(token, topic, apiKey) {
       throw new Error("Response body is not readable");
     }
 
-    console.log(`✅ Stream connected for job ${jobId}, reading events...`);
+    console.log(`Stream connected for job ${jobId}, reading events...`);
 
     const reader = streamRes.body.getReader();
     const decoder = new TextDecoder();
@@ -165,19 +165,19 @@ export async function* streamGenerate(token, topic, apiKey) {
         if (done) {
           // Stream ended, process remaining buffer
           if (buffer.trim()) {
-            console.log(`⚠️ Processing final buffer: ${buffer.length} bytes`);
+            console.log(`Processing final buffer: ${buffer.length} bytes`);
           }
           break;
         }
       } catch (readError) {
-        console.error("❌ Stream read error:", readError.message);
+        console.error("Stream read error:", readError.message);
         throw new Error(`Failed to read stream: ${readError.message}`);
       }
 
       if (chunk) {
         const text = decoder.decode(chunk, { stream: true });
         buffer += text;
-        console.log(`📥 Received chunk: ${text.length} bytes`);
+        console.log(`Received chunk: ${text.length} bytes`);
       }
 
       // Process complete SSE messages (separated by double newlines)
@@ -209,7 +209,7 @@ export async function* streamGenerate(token, topic, apiKey) {
           const dataStr = dataLines.join("\n").trim();
 
           if (!dataStr) {
-            console.log("⚠️ Empty data for event, skipping");
+            console.log("Empty data for event, skipping");
             continue;
           }
 
@@ -218,7 +218,7 @@ export async function* streamGenerate(token, topic, apiKey) {
             parsed = JSON.parse(dataStr);
           } catch (parseError) {
             console.error(
-              "❌ Failed to parse JSON:",
+              "Failed to parse JSON:",
               parseError.message,
               "Data preview:",
               dataStr.substring(0, 150),
@@ -227,7 +227,7 @@ export async function* streamGenerate(token, topic, apiKey) {
           }
 
           eventCount++;
-          console.log(`📊 Event #${eventCount}: ${eventType}`, {
+          console.log(`Event #${eventCount}: ${eventType}`, {
             dataType: typeof parsed,
             preview:
               typeof parsed === "object"
@@ -244,14 +244,14 @@ export async function* streamGenerate(token, topic, apiKey) {
 
           // Stop processing after final event
           if (eventType === "final") {
-            console.log(`✅ Final event received (event #${eventCount})`);
+            console.log(`Final event received (event #${eventCount})`);
             reader.cancel();
             return;
           }
 
           // Safety: stop after error event
           if (hasError) {
-            console.log(`⚠️ Stopping after error event`);
+            console.log(`Stopping after error event`);
             reader.cancel();
             return;
           }
@@ -263,7 +263,7 @@ export async function* streamGenerate(token, topic, apiKey) {
     // The final event often arrives in the last chunk and stays in the buffer
     if (buffer.trim()) {
       console.log(
-        `⏳ Processing final buffer after stream end: ${buffer.length} bytes`,
+        `Processing final buffer after stream end: ${buffer.length} bytes`,
       );
 
       // Split by "event:" to handle any remaining events
@@ -285,7 +285,7 @@ export async function* streamGenerate(token, topic, apiKey) {
         const dataStr = dataLines.join("\n").trim();
 
         if (!dataStr) {
-          console.log("⚠️ Empty data in final buffer, skipping");
+          console.log("Empty data in final buffer, skipping");
           continue;
         }
 
@@ -294,7 +294,7 @@ export async function* streamGenerate(token, topic, apiKey) {
           parsed = JSON.parse(dataStr);
         } catch (parseError) {
           console.error(
-            "❌ Failed to parse final event JSON:",
+            "Failed to parse final event JSON:",
             parseError.message,
             "Data preview:",
             dataStr.substring(0, 200),
@@ -304,7 +304,7 @@ export async function* streamGenerate(token, topic, apiKey) {
 
         eventCount++;
         console.log(
-          `📊 Event #${eventCount}: ${eventType} (from final buffer)`,
+          `Event #${eventCount}: ${eventType} (from final buffer)`,
           {
             dataType: typeof parsed,
             preview:
@@ -319,7 +319,7 @@ export async function* streamGenerate(token, topic, apiKey) {
         // Final event should close the stream
         if (eventType === "final") {
           console.log(
-            `✅ Final event received from buffer (event #${eventCount})`,
+            `Final event received from buffer (event #${eventCount})`,
           );
           return;
         }
@@ -327,16 +327,16 @@ export async function* streamGenerate(token, topic, apiKey) {
     }
 
     console.log(
-      `✅ Stream ended normally. Total events processed: ${eventCount}`,
+      `Stream ended normally. Total events processed: ${eventCount}`,
     );
 
     if (eventCount === 0) {
       console.warn(
-        "⚠️ No events received from stream. This might indicate a backend issue.",
+        "No events received from stream. This might indicate a backend issue.",
       );
     }
   } catch (error) {
-    console.error("❌ streamGenerate error:", error.message);
+    console.error("streamGenerate error:", error.message);
     console.error("Stack:", error.stack);
 
     // Yield error event so UI can handle it

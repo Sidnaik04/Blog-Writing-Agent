@@ -47,12 +47,12 @@ async def generate_blog(
     if not api_key:
         api_key = settings.GOOGLE_API_KEY
 
-    msg = f"🚀 Generate request received. User: {user}. Topic: {topic[:50] if topic else 'EMPTY'}..."
+    msg = f"Generate request received. User: {user}. Topic: {topic[:50] if topic else 'EMPTY'}..."
     logger.info(msg)
     print(msg, flush=True)
 
     if not topic or not topic.strip():
-        logger.error("❌ Topic is empty!")
+        logger.error("Topic is empty!")
         return {"error": "Topic is required"}
 
     # Create job
@@ -82,8 +82,8 @@ async def run_generation(job_id: str, topic: str, api_key: str):
     Stores updates in jobs[job_id]["events"].
     Managed by FastAPI's BackgroundTasks for production-safe execution.
     """
-    logger.info(f"[{job_id}] ⏳ Background task started by FastAPI BackgroundTasks")
-    print(f"[{job_id}] ⏳ Background task started", flush=True)
+    logger.info(f"[{job_id}] Background task started by FastAPI BackgroundTasks")
+    print(f"[{job_id}] Background task started", flush=True)
 
     try:
         logger.debug(f"[{job_id}] Building LangGraph...")
@@ -92,11 +92,11 @@ async def run_generation(job_id: str, topic: str, api_key: str):
         graph = build_graph(api_key=api_key)
 
         logger.debug(f"[{job_id}] Graph built successfully")
-        print(f"[{job_id}] ✅ Graph built successfully", flush=True)
+        print(f"[{job_id}] Graph built successfully", flush=True)
 
         # Store initial event
         jobs[job_id]["events"].append(
-            {"event": "log", "data": {"status": "✅ Connected. Building graph..."}}
+            {"event": "log", "data": {"status": "Connected. Building graph..."}}
         )
 
         inputs = {
@@ -119,15 +119,15 @@ async def run_generation(job_id: str, topic: str, api_key: str):
         update_count = 0
         last_node = None
 
-        logger.info(f"[{job_id}] 🔄 Starting graph.astream()...")
-        print(f"[{job_id}] 🔄 Starting graph stream execution...", flush=True)
+        logger.info(f"[{job_id}] Starting graph.astream()...")
+        print(f"[{job_id}] Starting graph stream execution...", flush=True)
 
         async for step in graph.astream(inputs, stream_mode="updates"):
             update_count += 1
             final_state = step
 
             print(
-                f"[{job_id}] 📡 Received step #{update_count}: {list(step.keys()) if isinstance(step, dict) else type(step)}",
+                f"[{job_id}] Received step #{update_count}: {list(step.keys()) if isinstance(step, dict) else type(step)}",
                 flush=True,
             )
 
@@ -144,12 +144,12 @@ async def run_generation(job_id: str, topic: str, api_key: str):
             jobs[job_id]["events"].append({"event": "update", "data": step})
 
             print(
-                f"[{job_id}] 📤 Stored update event #{update_count}, total events: {len(jobs[job_id]['events'])}",
+                f"[{job_id}] Stored update event #{update_count}, total events: {len(jobs[job_id]['events'])}",
                 flush=True,
             )
 
-        logger.info(f"[{job_id}] ✅ Graph completed. Total updates: {update_count}")
-        print(f"[{job_id}] ✅ Graph completed with {update_count} updates", flush=True)
+        logger.info(f"[{job_id}] Graph completed. Total updates: {update_count}")
+        print(f"[{job_id}] Graph completed with {update_count} updates", flush=True)
 
         # Extract final content from the last streamed state
         final_md = ""
@@ -174,12 +174,12 @@ async def run_generation(job_id: str, topic: str, api_key: str):
         jobs[job_id]["status"] = "done"
         jobs[job_id]["final"] = final_md
 
-        logger.info(f"[{job_id}] ✅ Generation completed successfully")
-        print(f"[{job_id}] ✅ Successfully completed blog generation", flush=True)
-        logger.info(f"[{job_id}] 🏁 Background task exiting (success)")
+        logger.info(f"[{job_id}] Generation completed successfully")
+        print(f"[{job_id}] Successfully completed blog generation", flush=True)
+        logger.info(f"[{job_id}] Background task exiting (success)")
 
     except Exception as e:
-        error_msg = f"❌ ERROR: {type(e).__name__}: {str(e)}"
+        error_msg = f"ERROR: {type(e).__name__}: {str(e)}"
         logger.error(f"[{job_id}] {error_msg}", exc_info=True)
         print(f"[{job_id}] {error_msg}", flush=True)
 
@@ -188,7 +188,7 @@ async def run_generation(job_id: str, topic: str, api_key: str):
         jobs[job_id]["status"] = "error"
         jobs[job_id]["error"] = error_msg
 
-        logger.error(f"[{job_id}] 🏁 Background task exiting (error)")
+        logger.error(f"[{job_id}] Background task exiting (error)")
 
 
 @router.get("/stream/{job_id}")
@@ -216,7 +216,7 @@ async def stream_generation(job_id: str):
                 event_json = json.dumps(event["data"], default=str)
                 yield f"event: {event['event']}\ndata: {event_json}\n\n"
                 print(
-                    f"[{job_id}] 📤 Streamed event #{sent_count + 1}: {event['event']}",
+                    f"[{job_id}] Streamed event #{sent_count + 1}: {event['event']}",
                     flush=True,
                 )
                 sent_count += 1
